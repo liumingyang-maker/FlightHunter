@@ -329,6 +329,38 @@ def scan_due(
     engine.dispose()
 
 
+@app.command("worker")
+def worker(
+    once: bool = typer.Option(False, "--once", help="只跑一轮后退出"),
+    execute: bool = typer.Option(False, "--execute", help="真实抓取（默认 dry-run）"),
+    interval: int = typer.Option(3600, "--interval-seconds", help="循环间隔秒"),
+    config: str | None = typer.Option(None, "--config"),
+    limit: int = typer.Option(10, "--limit"),
+) -> None:
+    """本地周期 worker：定期调用 scan-due。用 Windows 任务计划或前台循环启动。"""
+    import time
+
+    settings = load_settings(config, project_root=_project_root())
+    from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
+    from app.scheduler.jobs import run_due_scans
+
+    engine = create_db_engine(settings)
+    init_db(engine)
+    factory = make_session_factory(engine)
+    rounds = 0
+    try:
+        while True:
+            rounds += 1
+            with session_scope(factory) as session:
+                runs = run_due_scans(session, settings, dry_run=not execute, limit=limit)
+            console.print(f"[worker #{rounds}] scans={len(runs)} execute={execute}")
+            if once:
+                break
+            time.sleep(max(30, interval))
+    finally:
+        engine.dispose()
+
+
 @app.command("list-deals")
 def list_deals(
     risk: str | None = typer.Option(None, "--risk"),

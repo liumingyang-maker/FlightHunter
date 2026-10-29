@@ -362,20 +362,35 @@ async def run_discovery(
     persist_signals: bool = True,
     after_fetch: bool = True,
     country_code: str | None = None,
+    enforce_cooldown: bool = True,
 ) -> list[dict[str, Any]]:
-    """status+module(+可选国家) 过滤 → last_fetch_at 轮询 → 抓取 → 可选入库匹配。"""
+    """status+module(+国家) → 冷却过滤 → last_fetch 轮询 → 抓取。"""
+    from datetime import timedelta as _td
+
+    from app.core.timeutils import ensure_aware_utc
+
+    now = utc_now()
     stmt = select(Source).where(Source.status == "active")
     if module != "all":
         stmt = stmt.where(Source.module.in_((module, "shared")))
     if country_code:
         cc = country_code.upper()
-        # 优先该国来源；无国家标注的共享源保留
         stmt = stmt.where((Source.country_code == cc) | (Source.country_code.is_(None)))
     stmt = stmt.order_by(Source.last_fetch_at.is_(None).desc(), Source.last_fetch_at, Source.name)
-    stmt = stmt.limit(limit)
-    sources = list(session.scalars(stmt).all())
+    all_sources = list(session.scalars(stmt).all())
+    sources: list[Source] = []
+    for s in all_sources:
+        if enforce_cooldown and not dry_run and s.last_fetch_at is not None:
+            interval_h = max(1, s.fetch_interval_hours or 24)
+            last = ensure_aware_utc(s.last_fetch_at)
+            if last and (now - last) < _td(hours=interval_h):
+                continue
+        sources.append(s)
+        if len(sources) >= limit:
+            break
     out = []
     for s in sources:
+        offer_cc = s.country_code
         out.append(
             await fetch_source(
                 session,
@@ -384,7 +399,7 @@ async def run_discovery(
                 module=module,
                 dry_run=dry_run,
                 persist_signals=persist_signals,
-                country_code=country_code or s.country_code,
+                country_code=offer_cc,
             )
         )
     session.flush()

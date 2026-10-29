@@ -28,16 +28,13 @@ def claim_due_subscriptions(
     now=None,
     limit: int = 50,
 ) -> list[TripScanSubscription]:
-    """先在 SQL 层筛启用且到期，再 limit。"""
+    """筛出真正到期的订阅，再截断 limit（避免未到期挤掉到期任务）。"""
     now = ensure_aware_utc(now) or utc_now()
-    # 取候选后在 Python 过滤到期（SQLite DateTime 比较需 aware）
     candidates = session.scalars(
-        select(TripScanSubscription)
-        .where(
+        select(TripScanSubscription).where(
             TripScanSubscription.enabled == True,  # noqa: E712
             TripScanSubscription.paused_reason.is_(None),
         )
-        .limit(200)
     ).all()
     ready: list[TripScanSubscription] = []
     for sub in candidates:
@@ -50,9 +47,9 @@ def claim_due_subscriptions(
             sub.paused_reason = "trip_completed"
             continue
         ready.append(sub)
-        if len(ready) >= limit:
-            break
-    return ready
+    # 稳定排序：先按 next_run_at 升序（None 最前）
+    ready.sort(key=lambda s: ensure_aware_utc(s.next_run_at).timestamp() if s.next_run_at else 0.0)
+    return ready[:limit]
 
 
 async def _discovery_for_task(
