@@ -149,33 +149,54 @@ def fill_form_with_playwright(
             receipt = None
             status = "prefilled"
             clicked = False
-            if will_submit:
-                page.click("#submit_btn, button[type=submit]")
-                clicked = True
+            try:
+                if will_submit:
+                    page.click("#submit_btn, button[type=submit]")
+                    clicked = True
+                    try:
+                        page.wait_for_selector("#receipt_code", timeout=5000)
+                        receipt = page.inner_text("#receipt_code").strip() or None
+                        status = "confirmed" if receipt else "unknown"
+                    except Exception:
+                        status = "unknown"
+                        warnings.append("已点击提交但未见回执；结果 unknown，请人工核实")
+                browser.close()
+            except Exception as exc:
+                # 点击后异常：可能已提交 → unknown，禁止按 failed 自动重试
                 try:
-                    page.wait_for_selector("#receipt_code", timeout=5000)
-                    receipt = page.inner_text("#receipt_code").strip() or None
-                    status = "confirmed" if receipt else "unknown"
+                    browser.close()
                 except Exception:
-                    # 点击已发生但回执未知 → unknown，禁止自动重试
-                    status = "unknown"
-                    warnings.append("已点击提交但未见回执；结果 unknown，请人工核实")
-            browser.close()
+                    pass
+                if clicked or will_submit:
+                    return BrowserResult(
+                        True,
+                        plan.mode,
+                        receipt_code=None,
+                        status="unknown",
+                        message=f"提交过程异常，结果未知: {exc}",
+                        warnings=warnings + ["提交可能已发出"],
+                        requires_human=plan.requires_human + ["请人工核实是否报名成功"],
+                        submitted=True,
+                    )
+                return BrowserResult(
+                    False,
+                    plan.mode,
+                    status="failed",
+                    message=str(exc),
+                    submitted=False,
+                )
             return BrowserResult(
                 True,
                 plan.mode,
                 receipt_code=receipt,
                 status=status,
-                message="浏览器操作完成"
-                if status != "unknown"
-                else "提交结果未知",
+                message="浏览器操作完成" if status != "unknown" else "提交结果未知",
                 warnings=warnings,
                 requires_human=plan.requires_human
                 + (["请人工核实是否报名成功"] if status == "unknown" else []),
                 submitted=clicked,
             )
     except Exception as exc:
-        # 若无法区分是否已点击，保守 failed 且不自动重试
         return BrowserResult(
             False, plan.mode, status="failed", message=str(exc), submitted=False
         )
