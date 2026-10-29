@@ -90,3 +90,4 @@ GET /entries /notifications → 200
 2. 配置真实票价 Key / IMAP 后打开对应 blocked 能力
 3. 按矩阵继续把 partial 升 done（真实来源与供应商）
 
+
