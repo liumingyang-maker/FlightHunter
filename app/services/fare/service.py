@@ -301,13 +301,27 @@ def match_watch_to_deals(session: Session, watch: FareWatch) -> list[FareWatchMa
             .limit(1)
         )
         trusted = (
-            _is_trusted_quote(latest_quote, watch_adults=watch.adults) if latest_quote else None
+            _is_trusted_quote(latest_quote, watch_adults=watch.adults, deal=deal)
+            if latest_quote
+            else None
         )
         if latest_quote and trusted:
             price_status = FareQuoteStatus.OBSERVED.value
         elif latest_quote:
             price_status = latest_quote.quote_status or FareQuoteStatus.PROVIDER_UNKNOWN.value
             reasons.append("QUOTE_NOT_TRUSTED_FOR_VERIFIED")
+            if (
+                latest_quote.origin
+                and deal.origin
+                and latest_quote.origin.upper() != (deal.origin or "").upper()
+            ) or (
+                latest_quote.destination
+                and deal.destination
+                and latest_quote.destination.upper() != (deal.destination or "").upper()
+            ):
+                reasons.append("QUOTE_ROUTE_MISMATCH")
+            if latest_quote.quote_expiry_utc is None:
+                reasons.append("QUOTE_TTL_MISSING")
         else:
             price_status = FareQuoteStatus.NOT_QUERIED.value
             reasons.append("NO_AUTHORIZED_QUOTE")
@@ -456,24 +470,69 @@ def historical_median_for_route(
     return median(r.total_price for r in rows), len(rows)
 
 
-def _is_trusted_quote(quote: FareQuote, *, watch_adults: int) -> bool:
-    """可信报价：授权源 + 未过期 + 人数匹配 + 非 community 源。"""
+_BANNED_TRUSTED_PROVIDER = frozenset(
+    {
+        "community",
+        "user_supplied",
+        "manual_share",
+        "totally_unregistered_provider",
+        "unknown",
+        "anonymous",
+    }
+)
+
+
+def _provider_whitelist() -> set[str]:
+    """从当前进程 Settings 读白名单；未配置则空集（禁止 urgent_verified）。"""
+    try:
+        from app.config import load_settings
+
+        s = load_settings()
+        return {p.lower() for p in s.airfare_radar.trusted_quote_providers}
+    except Exception:
+        return set()
+
+
+def _is_trusted_quote(
+    quote: FareQuote,
+    *,
+    watch_adults: int,
+    deal: FareDeal | None = None,
+    whitelist: set[str] | None = None,
+) -> bool:
+    """可信报价：白名单供应商 + 必须有未来 TTL + 人数匹配 + 航线一致 + 非社区源。"""
     if quote is None or quote.total_price is None:
         return False
-    provider = (quote.provider or "").lower()
-    if provider in ("community", "user_supplied", "manual_share"):
+    provider = (quote.provider or "").lower().strip()
+    if not provider or provider in _BANNED_TRUSTED_PROVIDER:
         return False
     if "community" in provider or "user" in provider:
         return False
-    # 过期
-    if quote.quote_expiry_utc is not None:
-        from app.core.timeutils import ensure_aware_utc, utc_now
+    allowed = _provider_whitelist() if whitelist is None else whitelist
+    if provider not in allowed:
+        return False
+    # 必须提供未来过期时间（P0-02：无 TTL 不可当作可购）
+    from app.core.timeutils import ensure_aware_utc, utc_now
 
-        exp = ensure_aware_utc(quote.quote_expiry_utc)
-        if exp is not None and exp < utc_now():
-            return False
+    if quote.quote_expiry_utc is None:
+        return False
+    exp = ensure_aware_utc(quote.quote_expiry_utc)
+    if exp is None or exp < utc_now():
+        return False
     if quote.pax_count != watch_adults:
         return False
+    # 航线必须与 deal 一致
+    if deal is not None:
+        if quote.origin and deal.origin and quote.origin.upper() != (deal.origin or "").upper():
+            return False
+        if (
+            quote.destination
+            and deal.destination
+            and quote.destination.upper() != (deal.destination or "").upper()
+        ):
+            return False
+        if not quote.origin or not quote.destination:
+            return False
     return quote.quote_status not in (
         FareQuoteStatus.EXPIRED.value,
         FareQuoteStatus.UNAVAILABLE.value,
@@ -481,10 +540,26 @@ def _is_trusted_quote(quote: FareQuote, *, watch_adults: int) -> bool:
     )
 
 
+# 禁止 urgent_verified 的 reason codes
+_BLOCK_URGENT_VERIFIED = frozenset(
+    {
+        "OVER_BUDGET",
+        "PARTY_SIZE_MISMATCH",
+        "PARTY_SIZE_UNKNOWN",
+        "QUOTE_NOT_TRUSTED_FOR_VERIFIED",
+        "NO_AUTHORIZED_QUOTE",
+        "PRICE_FROM_COMMUNITY_ONLY",
+        "HIGH_RISK_SEPARATE",
+        "QUOTE_ROUTE_MISMATCH",
+        "QUOTE_TTL_MISSING",
+    }
+)
+
+
 def evaluate_alerts_for_match(
     session: Session, match: FareWatchMatch, *, watch: FareWatch
 ) -> FareAlert | None:
-    """三级提醒；仅可信报价可 urgent_verified（审核 P0-02）。"""
+    """三级提醒；仅白名单可信报价且无阻断 reason 可 urgent_verified。"""
     deal = session.get(FareDeal, match.deal_id)
     if deal is None:
         return None
@@ -498,19 +573,37 @@ def evaluate_alerts_for_match(
             .order_by(FareQuote.observed_at_utc.desc())
             .limit(1)
         )
-    trusted = bool(quote and _is_trusted_quote(quote, watch_adults=watch.adults))
+    trusted = bool(
+        quote
+        and _is_trusted_quote(
+            quote,
+            watch_adults=watch.adults,
+            deal=deal,
+            whitelist=_provider_whitelist(),
+        )
+    )
     high_risk = match.risk_match == FareRiskTier.HIGH_RISK.value
-    risk_noted = "QUOTE_NOT_TRUSTED_FOR_VERIFIED" in reasons or not trusted
+    blocked = bool(set(reasons) & _BLOCK_URGENT_VERIFIED)
+    # 预算：watch 有上限且报价超限
+    if (
+        watch.max_total_cost_cny is not None
+        and quote is not None
+        and quote.total_price is not None
+        and quote.total_price > watch.max_total_cost_cny
+    ):
+        blocked = True
+        if "OVER_BUDGET" not in reasons:
+            reasons.append("OVER_BUDGET")
 
     if high_risk:
         level = "digest"
         suppression = "high_risk_separate"
-    elif trusted and not risk_noted and match.risk_match == "standard":
+    elif trusted and not blocked and match.risk_match == "standard":
         level = "urgent_verified"
         suppression = None
     elif trusted:
         level = "digest"
-        suppression = "trusted_quote_but_risk_or_reasons"
+        suppression = "trusted_quote_but_blocked_reasons"
     else:
         level = "urgent_unverified"
         suppression = (

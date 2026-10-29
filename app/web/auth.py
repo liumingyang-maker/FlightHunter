@@ -1,8 +1,8 @@
 """本地会话与 API Token 鉴权。
 
-- 所有私人数据 API/页面默认要求认证（health/login/static/docs 除外）。
-- 支持 Authorization: Bearer <token>、X-Api-Token，或登录后 HttpOnly Cookie。
-- Token 存本地 data/auth.json（已 gitignore），不进入 Git。
+- 带时间戳签名 Cookie（URLSafeTimedSerializer + max_age）
+- 服务端会话表（data/sessions.json）：登出即撤销
+- 支持 Bearer / X-Api-Token
 """
 
 from __future__ import annotations
@@ -10,15 +10,16 @@ from __future__ import annotations
 import hmac
 import json
 import secrets
+import time
 from pathlib import Path
-from urllib.parse import quote
 
-from itsdangerous import BadSignature, URLSafeSerializer
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
 
 from app.config import Settings
+from app.core.url_safety import is_safe_local_next
 
 PUBLIC_EXACT = frozenset(
     {
@@ -37,6 +38,10 @@ def _auth_file_path(settings: Settings) -> Path:
     return Path(settings.project_root) / "data" / "auth.json"
 
 
+def _sessions_file_path(settings: Settings) -> Path:
+    return Path(settings.project_root) / "data" / "sessions.json"
+
+
 def _load_auth_file(settings: Settings) -> dict:
     path = _auth_file_path(settings)
     if path.is_file():
@@ -45,7 +50,6 @@ def _load_auth_file(settings: Settings) -> dict:
 
 
 def ensure_runtime_secrets(settings: Settings) -> tuple[str, str]:
-    """返回 (api_token, session_secret)，必要时生成并落盘。"""
     cached_token = settings.auth.api_token
     cached_secret = getattr(settings.auth, "_session_secret", None)
     if cached_token and cached_secret:
@@ -83,23 +87,75 @@ def token_matches(provided: str | None, settings: Settings) -> bool:
     return hmac.compare_digest(provided.encode(), expected.encode())
 
 
-def _serializer(settings: Settings) -> URLSafeSerializer:
+def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     _, secret = ensure_runtime_secrets(settings)
-    return URLSafeSerializer(secret, salt="flighthunter-session")
+    return URLSafeTimedSerializer(secret, salt="flighthunter-session-v2")
+
+
+def _load_sessions(settings: Settings) -> dict:
+    path = _sessions_file_path(settings)
+    if path.is_file():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _save_sessions(settings: Settings, data: dict) -> None:
+    path = _sessions_file_path(settings)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _prune_sessions(settings: Settings, data: dict) -> dict:
+    now = time.time()
+    max_age = settings.auth.session_max_age_seconds
+    return {k: v for k, v in data.items() if float(v.get("exp", 0)) > now and max_age > 0}
 
 
 def create_session_cookie_value(settings: Settings) -> str:
-    return _serializer(settings).dumps({"role": "local_user"})
+    """创建带 sid 的时间戳 Cookie，并在服务端登记。"""
+    sid = secrets.token_urlsafe(24)
+    now = time.time()
+    data = _load_sessions(settings)
+    data = _prune_sessions(settings, data)
+    data[sid] = {"exp": now + settings.auth.session_max_age_seconds, "iat": now}
+    _save_sessions(settings, data)
+    return _serializer(settings).dumps({"role": "local_user", "sid": sid})
+
+
+def revoke_session_cookie(value: str | None, settings: Settings) -> bool:
+    sid = _sid_from_cookie(value, settings)
+    if not sid:
+        return False
+    data = _load_sessions(settings)
+    if sid in data:
+        del data[sid]
+        _save_sessions(settings, data)
+        return True
+    return False
+
+
+def _sid_from_cookie(value: str | None, settings: Settings) -> str | None:
+    if not value:
+        return None
+    try:
+        data = _serializer(settings).loads(value, max_age=settings.auth.session_max_age_seconds)
+    except BadSignature:
+        return None
+    if data.get("role") != "local_user":
+        return None
+    sid = data.get("sid")
+    return str(sid) if sid else None
 
 
 def verify_session_cookie(value: str | None, settings: Settings) -> bool:
-    if not value:
+    sid = _sid_from_cookie(value, settings)
+    if not sid:
         return False
-    try:
-        data = _serializer(settings).loads(value)
-        return data.get("role") == "local_user"
-    except BadSignature:
-        return False
+    data = _prune_sessions(settings, _load_sessions(settings))
+    return sid in data
 
 
 def is_authenticated(request: Request, settings: Settings) -> bool:
@@ -111,7 +167,7 @@ def is_authenticated(request: Request, settings: Settings) -> bool:
     if token_matches(request.headers.get("x-api-token"), settings):
         return True
     cookie_name = settings.auth.session_cookie_name
-    return bool(verify_session_cookie(request.cookies.get(cookie_name), settings))
+    return verify_session_cookie(request.cookies.get(cookie_name), settings)
 
 
 def is_public_path(path: str) -> bool:
@@ -140,5 +196,5 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "request_id": "unauthorized",
                 },
             )
-        nxt = quote(path, safe="/")
+        nxt = is_safe_local_next(path)
         return RedirectResponse(url=f"/login?next={nxt}", status_code=303)

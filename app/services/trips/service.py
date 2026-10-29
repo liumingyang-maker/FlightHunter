@@ -282,7 +282,13 @@ def rematch_trip_benefits(session: Session, trip: Trip) -> list[TripBenefitMatch
 
 
 def _date_overlap(trip: Trip, offer: BenefitOffer) -> str:
-    """使用期优先；领取期 ≠ 可用期（审核 P1-01）。"""
+    """使用期优先；领取期 ≠ 可用期；低置信度日期不得 confirmed。"""
+    certainty = offer.date_certainty
+    low_confidence = certainty in (
+        "historical_reference",
+        "not_yet_announced",
+        "unconfirmed",
+    )
 
     def _pair(start, end):
         if start is None and end is None:
@@ -299,12 +305,19 @@ def _date_overlap(trip: Trip, offer: BenefitOffer) -> str:
         ee = e or trip.local_end_date
         return overlaps(trip.local_start_date, trip.local_end_date, ss, ee)
 
+    # 低置信度：任何重叠最多 maybe_usable
+    if low_confidence:
+        for win in (redeem, event, claim, booking):
+            if win is not None and _ov(*win):
+                return "unconfirmed"
+        return "unconfirmed"
+
+    # 使用期 / 活动期（仅 confirmed_for_dates）
     for win in (redeem, event):
         if win is not None and _ov(*win):
             return "confirmed"
 
     if redeem is not None or event is not None:
-        # 使用期已知：若与行程不重叠，即使领取期重叠也不能标 confirmed
         for win in (redeem, event):
             if win is not None and not _ov(*win):
                 if claim is not None and _ov(*claim):
@@ -313,13 +326,6 @@ def _date_overlap(trip: Trip, offer: BenefitOffer) -> str:
         return "none"
 
     if claim is not None or booking is not None:
-        return "unconfirmed"
-
-    if offer.date_certainty in (
-        "unconfirmed",
-        "not_yet_announced",
-        "historical_reference",
-    ):
         return "unconfirmed"
     return "none"
 

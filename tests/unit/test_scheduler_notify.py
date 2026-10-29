@@ -88,7 +88,8 @@ def test_verify_with_evidence_can_pass(db):
     db.flush()
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
-        "<body><p>No purchase necessary. Closes 2027-03-01.</p></body></html>"
+        "<body><p>Enter to win. No purchase necessary. Closes 2027-03-01. "
+        "See Official Rules and eligibility.</p></body></html>"
     )
     complete_verify_from_html(db, r, html)
     db.commit()

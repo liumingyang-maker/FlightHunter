@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 from app.models import FareRiskEvidence
 from app.schemas.domain import FareSignalImport, FareWatchCreate
@@ -224,7 +224,11 @@ def test_mark_booked_user_reported(db):
     assert db.get(type(deal), deal.id).booking_status == "user_reported"
 
 
-def test_quote_observed_vs_signal(db):
+def test_quote_observed_vs_signal(db, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.fare.service._provider_whitelist",
+        lambda: {"authorized_demo"},
+    )
     deal, _ = import_signal(
         db,
         FareSignalImport(
@@ -250,6 +254,7 @@ def test_quote_observed_vs_signal(db):
         destination="HND",
         taxes_included=True,
         baggage_included=False,
+        quote_expiry_utc=datetime.now(UTC) + timedelta(hours=12),
     )
     db.flush()
     matches = match_watch_to_deals(db, watch)

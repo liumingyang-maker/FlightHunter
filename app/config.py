@@ -202,6 +202,8 @@ class AirfareRadarConfig(BaseModel):
     quote_provider_enabled: bool = False
     quote_provider_api_key: str | None = None
     quote_provider_name: str | None = None
+    trusted_quote_providers: list[str] = Field(default_factory=list)
+    quote_max_ttl_hours: int = 48
     compare_total_cost_for_party: bool = True
     require_real_quote_for_urgent_verified: bool = True
     distinguish_reported_price_and_current_quote: bool = True

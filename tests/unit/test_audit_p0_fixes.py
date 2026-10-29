@@ -86,7 +86,8 @@ def test_p001_can_verify_same_site_with_purchase_and_date(db):
     r = _round(db, official_url="https://example.org/campaign")
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
-        "<body><p>No purchase necessary. Entry closes 2027-03-01.</p></body></html>"
+        "<body><p>Enter to win. No purchase necessary. Entry closes 2027-03-01. "
+        "See Official Rules and eligibility.</p></body></html>"
     )
     complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
     db.commit()
@@ -98,7 +99,8 @@ def test_p001_captcha_does_not_block_official_verified(db):
     r = _round(db, official_url="https://example.org/campaign")
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
-        "<body><p>No purchase necessary. Entry closes 2027-03-01.</p>"
+        "<body><p>Enter to win. No purchase necessary. Entry closes 2027-03-01. "
+        "Official Rules apply.</p>"
         "<p>Please complete the captcha to continue.</p></body></html>"
     )
     complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
@@ -113,7 +115,8 @@ def test_p001_captcha_downgrades_auto_policy(db):
     db.flush()
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
-        "<body><p>No purchase necessary. Entry closes 2027-03-01.</p>"
+        "<body><p>Enter to win. No purchase necessary. Entry closes 2027-03-01. "
+        "Official Rules apply.</p>"
         "<div>captcha</div></body></html>"
     )
     complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
@@ -162,7 +165,11 @@ def test_p002_untrusted_quote_not_urgent_verified(db):
     assert alert.alert_level != "urgent_verified"
 
 
-def test_p002_trusted_fresh_matching_quote_can_be_urgent(db):
+def test_p002_trusted_fresh_matching_quote_can_be_urgent(db, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.fare.service._provider_whitelist",
+        lambda: {"authorized_provider"},
+    )
     deal, _ = import_signal(
         db,
         FareSignalImport(

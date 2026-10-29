@@ -164,20 +164,22 @@ def finish_submit_success(
 def finish_submit_unknown(
     session: Session, attempt: EntryAttempt, *, message: str = ""
 ) -> EntryAttempt:
-    """请求可能已发送：只能 unknown，禁止自动重试。"""
+    """仅允许从 submitting 转 unknown；禁止改写 confirmed/cancelled 等终态。"""
     if attempt.status != EntryStatus.SUBMITTING.value:
-        # 从 submitting 才能到 unknown；其他路径也允许 prepared 之后未知
-        pass
-    target = EntryStatus.UNKNOWN
-    if attempt.status == EntryStatus.SUBMITTING.value:
-        assert_transition("entry", EntryStatus.SUBMITTING, target, ENTRY_TRANSITIONS)
+        raise FlightHunterError(
+            ErrorCode.VALIDATION_FAILED,
+            f"仅 submitting 可记为 unknown，当前: {attempt.status}",
+            details={"status": attempt.status},
+        )
+    assert_transition("entry", EntryStatus.SUBMITTING, EntryStatus.UNKNOWN, ENTRY_TRANSITIONS)
+    prev = EntryStatus.SUBMITTING.value
     attempt.status = EntryStatus.UNKNOWN.value
     attempt.error_code = ErrorCode.SUBMIT_OUTCOME_UNKNOWN.value
     attempt.last_submitted_at_utc = datetime.now(UTC)
     attempt.manual_review_required = True
     attempt.notes = message or "提交结果未知，需人工核实"
     session.flush()
-    _log_event(session, attempt, EntryStatus.SUBMITTING.value, EntryStatus.UNKNOWN.value)
+    _log_event(session, attempt, prev, EntryStatus.UNKNOWN.value)
     return attempt
 
 

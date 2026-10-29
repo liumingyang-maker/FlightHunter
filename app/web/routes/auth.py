@@ -10,6 +10,7 @@ from app.core.timeutils import utc_now
 from app.web.auth import (
     create_session_cookie_value,
     ensure_runtime_secrets,
+    revoke_session_cookie,
     token_matches,
 )
 
@@ -48,7 +49,9 @@ def login(payload: LoginIn, request: Request, response: Response):
 @router.post("/auth/logout")
 def logout(request: Request, response: Response):
     settings = request.app.state.settings  # type: ignore[attr-defined]
-    response.delete_cookie(key=settings.auth.session_cookie_name, path="/")
+    cookie_name = settings.auth.session_cookie_name
+    revoke_session_cookie(request.cookies.get(cookie_name), settings)
+    response.delete_cookie(key=cookie_name, path="/")
     return {
         "ok": True,
         "data": {"authenticated": False},
