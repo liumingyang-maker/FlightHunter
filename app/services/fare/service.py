@@ -695,6 +695,15 @@ def record_quote(
     quote_expiry_utc: datetime | None = None,
 ) -> FareQuote:
     """记录合法报价快照。availability_confirmed 仅在源明确证实时 true。"""
+    # 社区来源禁止伪装成报价供应商
+    banned = {
+        "community",
+        "user_supplied",
+        "manual_share",
+    }
+    if provider.lower().strip() in banned:
+        raise ValidationError("禁止将社区来源记录为报价供应商")
+
     if total_price is None and not availability_confirmed:
         status = FareQuoteStatus.UNAVAILABLE.value
     else:

@@ -152,7 +152,7 @@ def test_p002_untrusted_quote_not_urgent_verified(db):
         db,
         deal_id=deal.id,
         watch_id=watch.id,
-        provider="community",
+        provider="unknown_community",
         party_size=1,
         total_price=999,
         origin="CKG",

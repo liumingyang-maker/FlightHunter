@@ -225,8 +225,9 @@ def materialize_trip_offer(
 
 
 def match_and_alert_fare(session: Session, *, limit_watches: int = 20) -> dict[str, int]:
-    """对启用中的 FareWatch 做匹配并生成提醒（可解释、可去重）。"""
+    """对启用中的 FareWatch 做匹配并生成提醒；站内+尝试本机外送。"""
     from app.services.fare.service import evaluate_alerts_for_match, match_watch_to_deals
+    from app.services.notify.delivery import send_notification
 
     watches = session.scalars(
         select(FareWatch).where(FareWatch.enabled == True).limit(limit_watches)  # noqa: E712
@@ -240,6 +241,21 @@ def match_and_alert_fare(session: Session, *, limit_watches: int = 20) -> dict[s
             alert = evaluate_alerts_for_match(session, m, watch=w)
             if alert:
                 alerted += 1
+                if alert.delivery_status == "pending":
+                    n = send_notification(
+                        session,
+                        None,
+                        kind="fare_alert",
+                        title=alert.title or "机票提醒",
+                        body=alert.body or "",
+                        severity="warning" if alert.alert_level != "digest" else "info",
+                        entity_type="fare_alert",
+                        entity_id=alert.id,
+                    )
+                    if n and n.body and "delivered" in (n.body or ""):
+                        alert.delivery_status = "delivered"
+                    elif n:
+                        alert.delivery_status = "recorded"
     session.flush()
     return {"watches": len(watches), "matches": matched, "alerts": alerted}
 

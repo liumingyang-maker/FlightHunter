@@ -1,9 +1,9 @@
 ## 0. HEAD 当前状态（与历史章节分离）
 
-- **最新测试（开发环境）**：`113 passed` · `ruff` 全绿  
-- **鉴权**：已接入 Bearer/Cookie；未登录私人 API → 401  
-- **最新提交**：见 Git `develop`；差分审核 ZIP 每轮必出（`AGENTS.md` §4）  
-- 历史章节中的 “54 passed / 无鉴权” 仅作演进记录，**不代表当前 HEAD**
+- **最新测试（开发环境）**：见本轮审核包 manifest / pytest 日志（历史 54/105/113/135 等仅作演进记录）  
+- **鉴权**：Bearer/Cookie；未登录私人 API → 401  
+- **三大目标统一开发进行中**：worker 安装脚本、外送通知、卡包加密、Playwright 执行器、报价插件接口、IMAP 只读候选  
+- **每轮 commit 后必须导出审核 ZIP**（`AGENTS.md` §4）  
 
 ---
 

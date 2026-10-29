@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>模拟抽奖报名（FlightHunter Test）</title>
+</head>
+<body>
+  <h1>官方风格模拟活动（仅供本地测试）</h1>
+  <p>Official Rules: Eligibility open to residents. No purchase necessary. Closes 2027-03-01.</p>
+  <form id="entry" method="post" action="/submit">
+    <label>姓名 <input name="full_name" id="full_name" /></label>
+    <label>邮箱 <input name="email" id="email" type="email" /></label>
+    <label>居住国
+      <select name="country" id="country">
+        <option value="">请选择</option>
+        <option value="CN">CN</option>
+        <option value="US">US</option>
+      </select>
+    </label>
+    <label><input type="checkbox" name="marketing" id="marketing" /> 营销同意（默认不勾选）</label>
+    <button type="submit" id="submit_btn">提交报名</button>
+  </form>
+  <div id="receipt" hidden>
+    <h2>报名回执</h2>
+    <p>确认编号: <span id="receipt_code"></span></p>
+  </div>
+  <script>
+    document.getElementById('entry').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var code = 'DEMO-' + Math.random().toString(36).slice(2, 10).toUpperCase();
+      document.getElementById('receipt_code').textContent = code;
+      document.getElementById('receipt').hidden = false;
+    });
+  </script>
+</body>
+</html>
