@@ -100,12 +100,32 @@ def begin_verify(session: Session, round_: CampaignRound) -> CampaignRound:
     return round_
 
 
+def _has_rules_body(html: str) -> bool:
+    """细则正文：去掉超链接文字后，页面仍含规则语义（FH-R4-P1-03）。"""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    for a in soup.find_all("a"):
+        a.extract()
+    text = soup.get_text(" ", strip=True)
+    has_rules_heading = bool(
+        re.search(
+            r"(official\s+rules|活动细则|官方规则|official\s+terms)",
+            text,
+            re.I,
+        )
+    )
+    has_eligibility = bool(re.search(r"(eligibility|参赛资格|eligible|资格)", text, re.I))
+    return has_rules_heading and has_eligibility
+
+
 def complete_verify_from_html(
     session: Session,
     round_: CampaignRound,
     html: str,
     *,
     source_url: str | None = None,
+    rules_html: str | None = None,
 ) -> CampaignRound:
     url = source_url or round_.official_url
     result = extract_official_fields(html, source_url=url)
@@ -127,7 +147,15 @@ def complete_verify_from_html(
     has_date = any(r["field_path"] == "dates.clue" for r in rows)
     same_site = _same_site(url, round_.official_url)
     organizer_ok = _organizer_domain_ok(session, round_)
+    # 链接存在 ≠ 正文已核实；需 rules_html 或页面内细则正文
     rules_link_ok = _has_same_site_rules_link(html, url)
+    if rules_html:
+        rules_body_ok = _has_rules_body(rules_html) or _has_same_site_rules_link(rules_html, url)
+        # rules_html 已提供时，要求其中有规则正文语义
+        rules_body_ok = _has_rules_body(rules_html)
+    else:
+        rules_body_ok = _has_rules_body(html)
+    rules_ok = rules_link_ok and rules_body_ok
     has_campaign_semantics = bool(
         _CAMPAIGN_HINTS.search(text) or _CAMPAIGN_HINTS.search(result.title or "")
     )
@@ -136,7 +164,7 @@ def complete_verify_from_html(
     can_verify = bool(
         same_site
         and organizer_ok
-        and rules_link_ok
+        and rules_ok
         and has_purchase
         and has_date
         and result.title

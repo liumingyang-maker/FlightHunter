@@ -87,7 +87,8 @@ def test_p001_can_verify_same_site_with_purchase_and_date(db):
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
         "<body><p>Enter to win. No purchase necessary. Entry closes 2027-03-01. "
-        '<p><a href="/rules/2027">Official Rules</a></p></p></body></html>'
+        "<h2>Official Rules</h2><p>Eligibility: open to residents.</p>"
+        '<p><a href="/rules/2027">Official Rules PDF</a></p></p></body></html>'
     )
     complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
     db.commit()
@@ -100,6 +101,7 @@ def test_p001_captcha_does_not_block_official_verified(db):
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
         "<body><p>Enter to win. No purchase necessary. Entry closes 2027-03-01. "
+        "<h2>Official Rules</h2><p>Eligibility applies.</p>"
         '<a href="/rules">Official Rules</a>'
         "<p>Please complete the captcha to continue.</p></body></html>"
     )
@@ -116,6 +118,7 @@ def test_p001_captcha_downgrades_auto_policy(db):
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
         "<body><p>Enter to win. No purchase necessary. Entry closes 2027-03-01. "
+        "<h2>Official Rules</h2><p>Eligibility applies.</p>"
         '<a href="https://example.org/rules">Official Rules</a>'
         "<div>captcha</div></body></html>"
     )

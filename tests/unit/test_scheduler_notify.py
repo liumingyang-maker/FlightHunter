@@ -89,6 +89,7 @@ def test_verify_with_evidence_can_pass(db):
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
         "<body><p>Enter to win. No purchase necessary. Closes 2027-03-01. "
+        "<h2>Official Rules</h2><p>Eligibility: open.</p>"
         '<a href="/rules">Official Rules</a></p></body></html>'
     )
     complete_verify_from_html(db, r, html)

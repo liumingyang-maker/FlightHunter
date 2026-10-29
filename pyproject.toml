@@ -62,6 +62,7 @@ src = ["app", "tests"]
 extend-exclude = [
     "_audit_round2_tmp",
     "_audit_round3_tmp",
+    "_audit_round4_tmp",
     "_audit_tool_tmp",
     "review_exports",
     "data",
@@ -77,6 +78,7 @@ ignore = [
     "RUF003",
     "RUF012",
     "RUF059",
+    "SIM102",
     "SIM105",
     "SIM108",
     "B008",

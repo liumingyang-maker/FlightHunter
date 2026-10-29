@@ -209,27 +209,36 @@ def rematch_trip_benefits(session: Session, trip: Trip) -> list[TripBenefitMatch
 
         # 城市匹配：有城市限制时，需分段城市命中；无城市则 maybe
         city_match = "unknown"
+        matched_segments: list[TripSegment] = []
         if cities:
-            seg_cities = {s.city_code for s in segments if s.city_code}
-            if seg_cities & set(cities):
+            matched_segments = [s for s in segments if s.city_code and s.city_code in set(cities)]
+            if matched_segments:
                 city_match = "match"
-            elif not seg_cities:
+            elif not any(s.city_code for s in segments):
                 city_match = "unknown_city"
             else:
                 city_match = "no_match"
         else:
             city_match = "nationwide"
 
-        # 日期匹配：使用期/领取期/活动期任一覆盖行程
+        # 日期匹配：使用期/领取期/活动期
         date_match = _date_overlap(trip, offer)
 
-        if not country_ok or city_match == "no_match":
+        # FH-R4-P1-02：有城市分段时，活动/使用窗须与**该城市停留日**相交
+        if city_match == "match" and date_match == "confirmed" and matched_segments:
+            if not _window_hits_any_segment(offer, matched_segments):
+                date_match = "none"
+                city_match = "city_dates_mismatch"
+
+        if not country_ok or city_match in ("no_match", "city_dates_mismatch"):
             state = TripMatchState.NOT_USABLE
             reasons = []
             if not country_ok:
                 reasons.append("COUNTRY_NOT_MATCHED")
             if city_match == "no_match":
                 reasons.append("CITY_NOT_MATCHED")
+            if city_match == "city_dates_mismatch":
+                reasons.append("CITY_STAY_DATES_MISMATCH")
             category = "sustained_watch"
         elif date_match == "confirmed":
             if city_match == "unknown_city":
@@ -279,6 +288,33 @@ def rematch_trip_benefits(session: Session, trip: Trip) -> list[TripBenefitMatch
             results.append(m)
     session.flush()
     return results
+
+
+def _window_hits_any_segment(offer: BenefitOffer, segments: list) -> bool:
+    """使用/活动窗是否与任一匹配城市的停留日相交。"""
+
+    def _pair(start, end):
+        if start is None and end is None:
+            return None
+        return (start.date() if start else None, end.date() if end else None)
+
+    wins = [
+        _pair(offer.redeem_starts_at_local, offer.redeem_ends_at_local),
+        _pair(offer.event_starts_at_local, offer.event_ends_at_local),
+    ]
+    has_window = False
+    for win in wins:
+        if win is None:
+            continue
+        has_window = True
+        s, e = win
+        for seg in segments:
+            ss = s or seg.start_date
+            ee = e or seg.end_date
+            if overlaps(seg.start_date, seg.end_date, ss, ee):
+                return True
+    # 无任何使用/活动窗：不因城市分段否决；有窗但未命中 → False
+    return not has_window
 
 
 def _date_overlap(trip: Trip, offer: BenefitOffer) -> str:

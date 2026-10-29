@@ -301,7 +301,7 @@ def match_watch_to_deals(session: Session, watch: FareWatch) -> list[FareWatchMa
             .limit(1)
         )
         trusted = (
-            _is_trusted_quote(latest_quote, watch_adults=watch.adults, deal=deal)
+            _is_trusted_quote(latest_quote, watch_adults=watch.adults, deal=deal, watch=watch)
             if latest_quote
             else None
         )
@@ -314,6 +314,10 @@ def match_watch_to_deals(session: Session, watch: FareWatch) -> list[FareWatchMa
                 reasons.append("QUOTE_INVENTORY_UNCONFIRMED")
             if latest_quote.depart_date is None:
                 reasons.append("QUOTE_DATE_MISSING")
+            elif (
+                watch.depart_window_start and latest_quote.depart_date < watch.depart_window_start
+            ) or (watch.depart_window_end and latest_quote.depart_date > watch.depart_window_end):
+                reasons.append("QUOTE_OUTSIDE_WATCH_WINDOW")
             if (latest_quote.currency or "").upper() != "CNY":
                 reasons.append("QUOTE_CURRENCY_MISMATCH")
             if latest_quote.tax_included is None:
@@ -499,9 +503,10 @@ def _is_trusted_quote(
     whitelist: set[str] | None = None,
     settings=None,
     expected_currency: str = "CNY",
+    watch: FareWatch | None = None,
 ) -> bool:
-    """可信可购报价全链门槛（FH-R3-P0-02）：
-    白名单 provider + 未来 TTL + 库存已确认 + 出发日 + 人数 + 航线 + 币种一致。
+    """可信可购报价全链门槛：
+    白名单 + TTL + 库存确认 + 出发日 + 人数 + 航线 + 币种 + **出发日落在 watch 窗口**。
     """
     if quote is None or quote.total_price is None:
         return False
@@ -530,6 +535,11 @@ def _is_trusted_quote(
         return False
     if quote.pax_count != watch_adults:
         return False
+    if watch is not None:
+        if watch.depart_window_start and quote.depart_date < watch.depart_window_start:
+            return False
+        if watch.depart_window_end and quote.depart_date > watch.depart_window_end:
+            return False
     if deal is not None:
         if not quote.origin or not quote.destination:
             return False
@@ -560,6 +570,7 @@ _BLOCK_URGENT_VERIFIED = frozenset(
         "QUOTE_DATE_MISSING",
         "QUOTE_CURRENCY_MISMATCH",
         "QUOTE_TAX_UNKNOWN",
+        "QUOTE_OUTSIDE_WATCH_WINDOW",
     }
 )
 
@@ -588,6 +599,7 @@ def evaluate_alerts_for_match(
             watch_adults=watch.adults,
             deal=deal,
             whitelist=_provider_whitelist(),
+            watch=watch,
         )
     )
     high_risk = match.risk_match == FareRiskTier.HIGH_RISK.value

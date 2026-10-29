@@ -82,6 +82,8 @@ class HttpxFetchAdapter(SourceAdapter):
                 for _hop in range(_MAX_REDIRECT_HOPS + 1):
                     try:
                         assert_public_http_url(current)
+                        hop_host = (urlparse(current).hostname or "").lower()
+                        resolve_and_assert_public_host(hop_host)
                     except Exception as exc:
                         return FetchResult(
                             ok=False,
@@ -128,6 +130,8 @@ class HttpxFetchAdapter(SourceAdapter):
                         nxt = urljoin(current, loc)
                         try:
                             safe_redirect_target(nxt)
+                            nxt_host = (urlparse(nxt).hostname or "").lower()
+                            resolve_and_assert_public_host(nxt_host)
                         except Exception as exc:
                             return FetchResult(
                                 ok=False,

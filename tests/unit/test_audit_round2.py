@@ -74,6 +74,7 @@ def test_campaign_page_with_rules_can_verify(db):
         "<html><head><title>Win a Trip Official Giveaway</title></head>"
         "<body><p>Enter to win. No purchase necessary. "
         "Entry closes 2027-03-01. "
+        "<h2>Official Rules</h2><p>Eligibility: residents only.</p>"
         '<a href="/official-rules">Official Rules</a></p></body></html>'
     )
     complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
