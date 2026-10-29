@@ -16,7 +16,9 @@
 
 ## 独立审核（ChatGPT / 外部）
 
-请阅读 **[docs/REVIEW_FOR_GPT.md](docs/REVIEW_FOR_GPT.md)**：实现矩阵、关键不变量 I1–I12、反作弊清单、本地复现命令与建议审核输出格式。
+请阅读 **[docs/REVIEW_FOR_GPT.md](docs/REVIEW_FOR_GPT.md)** 与仓库法则 **[AGENTS.md](AGENTS.md)**。  
+外部审核意见为建议；实现方结合设计包与合规边界独立取舍，未完全遵守的项会在后续报告中说明原因。
+
 
 ## 技术栈
 
