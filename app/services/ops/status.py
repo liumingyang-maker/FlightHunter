@@ -43,6 +43,14 @@ def system_status(session: Session) -> dict:
         select(func.max(TaskRun.finished_at)).where(
             TaskRun.dry_run == False,  # noqa: E712
             TaskRun.status == "completed",
+            TaskRun.task_type.in_(
+                [
+                    "source_discovery_batch",
+                    "benefit_discovery",
+                    "fare_monitor",
+                    "source_discovery",
+                ]
+            ),
         )
     )
     last_exec_aware = ensure_aware_utc(last_exec) if last_exec else None

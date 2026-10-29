@@ -269,11 +269,14 @@ def materialize_raffle_candidates(
         camp = session.scalar(select(Campaign).where(Campaign.program_key == key))
         if camp is None:
             subtypes = list(s.deal_types or ["unclassified"])
-            category = (
-                "flight_giveaway"
-                if "flight_giveaway" in subtypes
-                else "other_giveaway"
-            )
+            if "flight_giveaway" in subtypes:
+                category = "flight_giveaway"
+            elif "travel_package_unknown_air" in subtypes:
+                category = "travel_package_unknown_air"
+            elif "lodging_or_cruise" in subtypes:
+                category = "lodging_or_cruise"
+            else:
+                category = "other_giveaway"
             camp = Campaign(
                 id=new_id(),
                 organizer_id=org.id,

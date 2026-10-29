@@ -19,13 +19,15 @@ def test_non_travel_prize_not_flight_giveaway():
     assert "prize_other" in sig.deal_types
 
 
-def test_travel_prize_is_flight_giveaway():
+def test_travel_prize_is_travel_package_unknown_air():
     sig = parse_raffle_label(
         "Win a free trip to Tokyo vacation package",
         page_url="https://example.org/c2",
     )
     assert sig is not None
-    assert "flight_giveaway" in sig.deal_types
+    # 未明确机票 → travel_package_unknown_air（更诚实）
+    assert "flight_giveaway" not in sig.deal_types
+    assert "travel_package_unknown_air" in sig.deal_types
 
 
 def test_aggregator_organizer_has_no_official_domain(db):

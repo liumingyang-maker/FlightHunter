@@ -484,6 +484,59 @@ def reconcile_stuck(
     engine.dispose()
 
 
+@app.command("raffle-provenance")
+def raffle_provenance(
+    config: str | None = typer.Option(None, "--config"),
+    limit: int = typer.Option(5, "--limit"),
+) -> None:
+    """对候选抽奖尝试只读抓取 official_url 并保存证据快照。"""
+    import asyncio
+
+    settings = load_settings(config, project_root=_project_root())
+    from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
+    from app.services.raffle.provenance import attempt_official_evidence_batch
+
+    engine = create_db_engine(settings)
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        results = asyncio.run(
+            attempt_official_evidence_batch(session, settings, limit=limit)
+        )
+        session.commit()
+        table = Table(title="抽奖官方溯源尝试")
+        table.add_column("标题")
+        table.add_column("结果")
+        for r in results:
+            status = "evidence" if r.get("ok") else str(r.get("reason"))
+            table.add_row(r.get("title", ""), status)
+        console.print(table)
+    engine.dispose()
+
+
+@app.command("jp-benefits-scan")
+def jp_benefits_scan(
+    config: str | None = typer.Option(None, "--config"),
+) -> None:
+    """日本演示行程：抓取公开活动页 → 优惠候选 → 匹配 → 中文指南。"""
+    import asyncio
+
+    settings = load_settings(config, project_root=_project_root())
+    from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
+    from app.services.trips.jp_benefits import ensure_demo_japan_trip, scan_jp_public_page
+
+    engine = create_db_engine(settings)
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        trip = ensure_demo_japan_trip(session, settings)
+        session.flush()
+        result = asyncio.run(scan_jp_public_page(session, settings, trip))
+        session.commit()
+        console.print_json(json.dumps(result, ensure_ascii=False, default=str))
+    engine.dispose()
+
+
 @app.command("list-deals")
 def list_deals(
     risk: str | None = typer.Option(None, "--risk"),

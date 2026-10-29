@@ -356,32 +356,29 @@ def parse_raffle_label(label: str, *, page_url: str) -> ParsedSignal | None:
         "win flights",
         "free trip",
         "vacation package",
-        "抽奖",
+        "win a ",
+        "win ",
+        "airfare",
+        "机票",
         "赠票",
         "免费旅行",
     )
     if not any(k in low or k in label for k in keys):
         return None
     types = ["unclassified"]
-    travel_kw = (
-        "trip",
-        "flight",
-        "vacation",
-        "travel",
-        "hotel",
-        "cruise",
-        "flight",
-        "机票",
-        "旅行",
-        "酒店",
-        "度假",
-        "游轮",
-    )
-    if any(k in low or k in label for k in travel_kw):
-        types = ["flight_giveaway"]
-    else:
-        # 非旅行奖品：手机/厨具等
+    if any(k in low for k in ("iphone", "android", "厨", "kitchen", "tripod", "手机")):
         types = ["prize_other"]
+    elif any(k in low for k in ("hotel", "cruise", "resort", "邮轮", "酒店")) and not any(
+        k in low for k in ("flight", "airfare", "机票", "round-trip", "roundtrip")
+    ):
+        types = ["lodging_or_cruise"]
+    elif any(k in low or k in label for k in ("flight", "airfare", "机票", "round-trip", "roundtrip")):
+        types = ["flight_giveaway"]
+    elif any(
+        k in low or k in label
+        for k in ("trip", "vacation", "travel", "度假", "旅行", "vacation package")
+    ):
+        types = ["travel_package_unknown_air"]
     return ParsedSignal(
         title=label[:200],
         raw_claim_text=label,
