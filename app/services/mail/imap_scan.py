@@ -32,13 +32,8 @@ class MailCandidate:
 
 
 def mail_configured(settings: Settings) -> bool:
-    return bool(
-        (settings.notifications.email_integration_enabled and getattr(settings, "email_host", None))
-        or (
-            settings.notifications.email_integration_enabled
-            and getattr(settings.ai, "email_host", None)
-        )
-    )
+    n = settings.notifications
+    return bool(n.email_integration_enabled and n.email_host and n.email_user)
 
 
 def scan_inbox_imap(

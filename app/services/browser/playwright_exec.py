@@ -48,13 +48,24 @@ def fill_form_with_playwright(
     file:// 模拟站可用 explicit_submit_consent 做本地 E2E。
     """
     target = file_url or plan.target_url
-    is_local_mock = bool(file_url and file_url.startswith("file:"))
-    if is_local_mock:
-        path = file_url[5:]
-        if path.startswith("///"):
-            path = path[2:]
-        if not Path(path).is_file():
-            return BrowserResult(False, plan.mode, message=f"模拟页不存在: {path}")
+    is_local_mock = False
+    if file_url:
+        if file_url.startswith("file:"):
+            is_local_mock = True
+            path = file_url[5:]
+            if path.startswith("///"):
+                path = path[1:] if path[2:3] == ":" else path[2:]
+            if path.startswith("//"):
+                path = path[1:]
+            if not Path(path).is_file():
+                return BrowserResult(False, plan.mode, message=f"模拟页不存在: {path}")
+        elif Path(file_url).is_file() and Path(file_url).suffix in (".html", ".htm"):
+            # 允许绝对路径自动转 URI（Windows 管道兼容）
+            is_local_mock = True
+            file_url = Path(file_url).resolve().as_uri()
+            target = file_url
+        else:
+            return BrowserResult(False, plan.mode, message="非法 file_url")
     else:
         try:
             assert_public_http_url(target)

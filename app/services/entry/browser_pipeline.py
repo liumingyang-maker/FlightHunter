@@ -100,20 +100,23 @@ def execute_browser_entry(
         begin_submit(session, attempt)
         session.commit()
 
+    # 必须传 file:// URI，不能丢 scheme
+    mock_uri = local_mock.as_uri() if local_mock else None
     result = fill_form_with_playwright(
         plan,
-        file_url=str(local_mock) if local_mock else None,
+        file_url=mock_uri,
         submit=will_submit,
         explicit_submit_consent=explicit_submit_consent,
     )
 
     if not result.ok:
-        if result.status in ("needs_human", "blocked", "needs_manual"):
+        # 提交已开始则必须收敛到 unknown，避免卡在 submitting
+        if attempt.status == "submitting":
+            finish_submit_unknown(session, attempt, message=result.message[:500])
+        else:
             attempt.manual_review_required = True
             attempt.notes = result.message[:500]
-            if attempt.status == "submitting":
-                finish_submit_unknown(session, attempt, message=result.message[:500])
-            session.flush()
+        session.flush()
         return BrowserPipelineResult(
             attempt_id=attempt.id,
             status=attempt.status,
@@ -121,7 +124,7 @@ def execute_browser_entry(
             browser_ok=False,
             message=result.message,
             warnings=result.warnings,
-            requires_human=result.requires_human,
+            requires_human=result.requires_human or ["请人工核实"],
         )
 
     if result.submitted and result.status == "unknown":
