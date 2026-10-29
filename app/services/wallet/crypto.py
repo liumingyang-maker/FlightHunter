@@ -78,12 +78,12 @@ def _dpapi_protect(data: bytes) -> bytes | None:
         import ctypes
         import ctypes.wintypes as wt
 
-        class DATA_BLOB(ctypes.Structure):
+        class DataBlob(ctypes.Structure):  # noqa: N801
             _fields_ = [("cbData", wt.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
 
         crypt32 = ctypes.windll.crypt32
-        blob_in = DATA_BLOB(len(data), ctypes.create_string_buffer(data, len(data)))
-        blob_out = DATA_BLOB()
+        blob_in = DataBlob(len(data), ctypes.create_string_buffer(data, len(data)))
+        blob_out = DataBlob()
         if not crypt32.CryptProtectData(
             ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out)
         ):
@@ -100,12 +100,12 @@ def _dpapi_unprotect(data: bytes) -> bytes | None:
         import ctypes
         import ctypes.wintypes as wt
 
-        class DATA_BLOB(ctypes.Structure):
+        class DataBlob(ctypes.Structure):  # noqa: N801
             _fields_ = [("cbData", wt.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
 
         crypt32 = ctypes.windll.crypt32
-        blob_in = DATA_BLOB(len(data), ctypes.create_string_buffer(data, len(data)))
-        blob_out = DATA_BLOB()
+        blob_in = DataBlob(len(data), ctypes.create_string_buffer(data, len(data)))
+        blob_out = DataBlob()
         if not crypt32.CryptUnprotectData(
             ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out)
         ):
