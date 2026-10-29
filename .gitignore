@@ -73,3 +73,4 @@ design_package/
 # GPT review export bundles (never commit ZIPs / secrets logs)
 review_exports/
 _audit_tool_tmp/
+_audit_round2_tmp/
