@@ -36,6 +36,26 @@ def _playwright_available() -> bool:
         return False
 
 
+def _resolve_file_target(file_url: str) -> tuple[bool, str | None, str | None]:
+    """返回 (is_local_mock, 浏览器应打开的 file URI, 错误信息)。"""
+    from urllib.parse import unquote, urlparse
+
+    if file_url.startswith("file:"):
+        parsed = urlparse(file_url)
+        raw = unquote(parsed.path or "")
+        # Windows: /C:/x → C:/x
+        if len(raw) >= 3 and raw[0] == "/" and raw[2] == ":":
+            raw = raw[1:]
+        path = Path(raw)
+        if not path.is_file():
+            return False, None, f"模拟页不存在: {path}"
+        return True, path.resolve().as_uri(), None
+    p = Path(file_url)
+    if p.is_file() and p.suffix.lower() in (".html", ".htm"):
+        return True, p.resolve().as_uri(), None
+    return False, None, "非法 file_url（需 file:// 或 .html 沙箱路径）"
+
+
 def fill_form_with_playwright(
     plan: PrefillPlan,
     *,
@@ -43,29 +63,16 @@ def fill_form_with_playwright(
     submit: bool = False,
     explicit_submit_consent: bool = False,
 ) -> BrowserResult:
-    """预填表单。自动提交仅允许显式同意且模式 AUTO_ALLOWED。
-
-    file:// 模拟站可用 explicit_submit_consent 做本地 E2E。
-    """
+    """预填表单。自动提交仅允许显式同意且模式 AUTO_ALLOWED。"""
     target = file_url or plan.target_url
     is_local_mock = False
     if file_url:
-        if file_url.startswith("file:"):
-            is_local_mock = True
-            path = file_url[5:]
-            if path.startswith("///"):
-                path = path[1:] if path[2:3] == ":" else path[2:]
-            if path.startswith("//"):
-                path = path[1:]
-            if not Path(path).is_file():
-                return BrowserResult(False, plan.mode, message=f"模拟页不存在: {path}")
-        elif Path(file_url).is_file() and Path(file_url).suffix in (".html", ".htm"):
-            # 允许绝对路径自动转 URI（Windows 管道兼容）
-            is_local_mock = True
-            file_url = Path(file_url).resolve().as_uri()
-            target = file_url
-        else:
-            return BrowserResult(False, plan.mode, message="非法 file_url")
+        ok, uri, err = _resolve_file_target(file_url)
+        if not ok:
+            return BrowserResult(False, plan.mode, message=err or "非法 file_url")
+        is_local_mock = True
+        file_url = uri
+        target = uri
     else:
         try:
             assert_public_http_url(target)

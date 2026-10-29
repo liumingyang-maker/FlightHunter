@@ -100,19 +100,55 @@ def execute_browser_entry(
         begin_submit(session, attempt)
         session.commit()
 
-    # 必须传 file:// URI，不能丢 scheme
     mock_uri = local_mock.as_uri() if local_mock else None
-    result = fill_form_with_playwright(
-        plan,
-        file_url=mock_uri,
-        submit=will_submit,
-        explicit_submit_consent=explicit_submit_consent,
-    )
+    try:
+        result = fill_form_with_playwright(
+            plan,
+            file_url=mock_uri,
+            submit=will_submit,
+            explicit_submit_consent=explicit_submit_consent,
+        )
+    except Exception as exc:
+        msg = f"浏览器执行异常: {exc}"
+        if attempt.status == "submitting":
+            finish_submit_unknown(session, attempt, message=msg[:500])
+            send_notification(
+                session,
+                settings,
+                kind="entry_unknown",
+                title="报名结果未知（执行异常）",
+                body=f"{round_.title}\n{msg[:200]}\n请人工核实；不会自动重试。",
+                severity="warning",
+                entity_type="entry_attempt",
+                entity_id=attempt.id,
+            )
+        else:
+            attempt.notes = msg[:500]
+            attempt.manual_review_required = True
+        session.flush()
+        return BrowserPipelineResult(
+            attempt_id=attempt.id,
+            status=attempt.status,
+            receipt_code=None,
+            browser_ok=False,
+            message=msg,
+            warnings=[],
+            requires_human=["请人工核实报名状态"],
+        )
 
     if not result.ok:
-        # 提交已开始则必须收敛到 unknown，避免卡在 submitting
         if attempt.status == "submitting":
             finish_submit_unknown(session, attempt, message=result.message[:500])
+            send_notification(
+                session,
+                settings,
+                kind="entry_unknown",
+                title="报名结果未知",
+                body=f"{round_.title}\n{result.message[:200]}\n请人工核实；系统不会自动重试。",
+                severity="warning",
+                entity_type="entry_attempt",
+                entity_id=attempt.id,
+            )
         else:
             attempt.manual_review_required = True
             attempt.notes = result.message[:500]
