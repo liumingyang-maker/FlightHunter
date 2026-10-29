@@ -33,6 +33,7 @@ def build_prefill_plan(
     profile: Profile,
     *,
     user_approved_fields: dict[str, str] | None = None,
+    allow_local_mock_submit: bool = False,
 ) -> PrefillPlan:
     """生成预填计划。营销勾选默认跳过；验证码/支付/证件要求人工。"""
     assert_public_http_url(round_.official_url)
@@ -50,6 +51,9 @@ def build_prefill_plan(
     if round_.has_captcha is True:
         plan.requires_human.append("CAPTCHA：系统不绕过，请人工完成")
         plan.mode = "MANUAL_ONLY"
+    elif allow_local_mock_submit:
+        # 仅本地模拟站 E2E：可显式 AUTO_ALLOWED
+        plan.mode = "AUTO_ALLOWED"
 
     if round_.marketing_consent_required is True:
         plan.skipped.append(

@@ -99,6 +99,8 @@ def prepare_entry(
 
 
 def mark_awaiting_review(session: Session, attempt: EntryAttempt) -> EntryAttempt:
+    if attempt.status == EntryStatus.AWAITING_REVIEW.value:
+        return attempt
     assert_transition(
         "entry",
         EntryStatus(attempt.status),

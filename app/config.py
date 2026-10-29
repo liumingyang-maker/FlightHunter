@@ -124,6 +124,9 @@ class NotificationsConfig(BaseModel):
     claim_reply_hours_before: list[int] = Field(default_factory=lambda: [24, 6, 2])
     email_integration_enabled: bool = False
     browser_notifications_enabled: bool = False
+    email_host: str | None = None
+    email_user: str | None = None
+    email_password: str | None = None  # 仅本地，不进 Git
 
 
 class StorageConfig(BaseModel):

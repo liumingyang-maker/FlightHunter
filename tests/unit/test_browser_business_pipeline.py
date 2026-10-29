@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from app.config import Settings
 from app.core.ids import new_id
-from app.models import Campaign, CampaignRound, EntryAttempt, Organizer, Profile
+from app.models import Campaign, CampaignRound, EntryAttempt, Notification, Organizer, Profile
 from app.schemas.domain import BenefitOfferCreate
 from app.services.benefits.service import create_benefit_offer, ensure_wallet_saved
 from app.services.entry.browser_pipeline import (
@@ -40,63 +42,100 @@ def _round_profile(db):
     return r, p
 
 
+def _mock_file(settings: Settings) -> Path:
+    root = Path(settings.project_root) / "fixtures" / "mock_campaign_site"
+    root.mkdir(parents=True, exist_ok=True)
+    p = root / "index.html"
+    p.write_text("<html><body>mock</body></html>", encoding="utf-8")
+    return p.resolve()
+
+
+def _br(**kw):
+    br = MagicMock()
+    defaults = dict(
+        ok=True,
+        status="prefilled",
+        submitted=False,
+        receipt_code=None,
+        message="ok",
+        warnings=[],
+        requires_human=[],
+    )
+    defaults.update(kw)
+    for k, v in defaults.items():
+        setattr(br, k, v)
+    return br
+
+
 def test_pipeline_prefill_only(db, settings: Settings):
     r, p = _round_profile(db)
-    with patch("app.services.entry.browser_pipeline.run_prefill_for_round") as m:
-        br = MagicMock()
-        br.ok = True
-        br.status = "prefilled"
-        br.submitted = False
-        br.receipt_code = None
-        br.message = "ok"
-        br.warnings = []
-        br.requires_human = ["人工提交"]
-        m.return_value = br
-        result = execute_browser_entry(db, settings, r, p, file_url="file:///x.html")
+    with patch("app.services.entry.browser_pipeline.fill_form_with_playwright", return_value=_br()):
+        result = execute_browser_entry(db, settings, r, p)
     db.commit()
     attempt = db.get(EntryAttempt, result.attempt_id)
     assert attempt is not None
     assert attempt.status == "awaiting_review"
-    assert result.receipt_code is None
+
+
+def test_repeat_prefill_idempotent(db, settings: Settings):
+    r, p = _round_profile(db)
+    with patch("app.services.entry.browser_pipeline.fill_form_with_playwright", return_value=_br()):
+        r1 = execute_browser_entry(db, settings, r, p)
+        r2 = execute_browser_entry(db, settings, r, p)
+    db.commit()
+    assert r1.attempt_id == r2.attempt_id
 
 
 def test_pipeline_unknown_after_click(db, settings: Settings):
     r, p = _round_profile(db)
-    with patch("app.services.entry.browser_pipeline.run_prefill_for_round") as m:
-        br = MagicMock()
-        br.ok = True
-        br.status = "unknown"
-        br.submitted = True
-        br.receipt_code = None
-        br.message = "点击后未知"
-        br.warnings = []
-        br.requires_human = ["核实"]
-        m.return_value = br
-        result = execute_browser_entry(db, settings, r, p, submit=True)
+    mock = _mock_file(settings)
+    with patch(
+        "app.services.entry.browser_pipeline.fill_form_with_playwright",
+        return_value=_br(
+            status="unknown", submitted=True, message="点击后未知", requires_human=["核实"]
+        ),
+    ):
+        result = execute_browser_entry(
+            db,
+            settings,
+            r,
+            p,
+            file_url=mock.as_uri(),
+            submit=True,
+            explicit_submit_consent=True,
+        )
     db.commit()
     assert result.status == "unknown"
-    from app.models import Notification
-
-    notes = db.query(Notification).filter(Notification.kind == "entry_unknown").all()
-    assert notes
+    assert any(n.kind == "entry_unknown" for n in db.query(Notification).all())
 
 
 def test_pipeline_confirmed_receipt(db, settings: Settings):
     r, p = _round_profile(db)
-    with patch("app.services.entry.browser_pipeline.run_prefill_for_round") as m:
-        br = MagicMock()
-        br.ok = True
-        br.status = "confirmed"
-        br.submitted = True
-        br.receipt_code = "RC-1"
-        br.message = "ok"
-        br.warnings = []
-        br.requires_human = []
-        m.return_value = br
-        result = execute_browser_entry(db, settings, r, p, submit=True)
+    mock = _mock_file(settings)
+    with patch(
+        "app.services.entry.browser_pipeline.fill_form_with_playwright",
+        return_value=_br(status="confirmed", submitted=True, receipt_code="RC-1"),
+    ):
+        result = execute_browser_entry(
+            db,
+            settings,
+            r,
+            p,
+            file_url=mock.as_uri(),
+            submit=True,
+            explicit_submit_consent=True,
+        )
     db.commit()
     assert result.status == "confirmed"
-    assert result.receipt_code == "RC-1"
+    n = db.query(Notification).filter(Notification.kind == "entry_confirmed").first()
+    assert n is not None
+    assert "RC-1" not in (n.body or "")
+
+
+def test_file_url_outside_sandbox_rejected(db, settings: Settings):
+    r, p = _round_profile(db)
+    with pytest.raises(ValueError, match="沙箱"):
+        execute_browser_entry(db, settings, r, p, file_url="file:///etc/passwd")
 
 
 def test_wallet_notify_encrypt(db, settings: Settings):
@@ -124,18 +163,8 @@ def test_mail_candidates_notify(db, settings: Settings):
     n = mail_candidates_to_notifications(
         db,
         settings,
-        {
-            "candidates": [
-                {
-                    "message_id": "m1",
-                    "subject": "恭喜中奖",
-                    "sender": "x@example.org",
-                }
-            ]
-        },
+        {"candidates": [{"message_id": "m1", "subject": "恭喜中奖", "sender": "x@e.org"}]},
     )
     db.commit()
     assert n == 1
-    from app.models import Notification
-
     assert any(x.kind == "mail_candidate" for x in db.query(Notification).all())

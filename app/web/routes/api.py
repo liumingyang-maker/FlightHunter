@@ -510,6 +510,7 @@ def prefill_execute(payload: PrefillExecuteIn, db: DbDep, settings: SettingsDep)
             file_url=payload.file_url,
             submit=payload.submit,
             explicit_submit_consent=payload.explicit_submit_consent,
+            user_approved_fields=payload.user_approved_fields,
         )
         db.commit()
     except FlightHunterError as exc:
@@ -563,20 +564,22 @@ def mail_candidates(db: DbDep, settings: SettingsDep):
 
     cfg = {
         "enabled": bool(settings.notifications.email_integration_enabled),  # type: ignore[attr-defined]
-        "host": getattr(settings, "email_host", None),
+        "host": settings.notifications.email_host,  # type: ignore[attr-defined]
+        "user": settings.notifications.email_user,  # type: ignore[attr-defined]
+        "password": settings.notifications.email_password,  # type: ignore[attr-defined]
     }
-    if not cfg["enabled"] or not cfg["host"]:
+    if not cfg["enabled"] or not cfg["host"] or not cfg["user"]:
         return _ok(
             {
                 "status": "blocked",
-                "message": "未启用邮件集成或缺少 IMAP host；需用户在本地配置授权后使用",
+                "message": "未启用邮件集成或缺少 IMAP host/user；请在本地配置 notifications.email_* 后使用",
             }
         )
     result = scan_inbox_imap(
         settings,  # type: ignore[arg-type]
         host=str(cfg["host"]),
-        username=str(getattr(settings, "email_user", "")),
-        password=str(getattr(settings, "email_password", "")),
+        username=str(cfg["user"] or ""),
+        password=str(cfg["password"] or ""),
     )
     n = mail_candidates_to_notifications(db, settings, result)  # type: ignore[arg-type]
     db.commit()
