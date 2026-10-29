@@ -174,8 +174,8 @@ def fill_form_with_playwright(
                         receipt_code=None,
                         status="unknown",
                         message=f"提交过程异常，结果未知: {exc}",
-                        warnings=warnings + ["提交可能已发出"],
-                        requires_human=plan.requires_human + ["请人工核实是否报名成功"],
+                        warnings=[*warnings, "提交可能已发出"],
+                        requires_human=[*plan.requires_human, "请人工核实是否报名成功"],
                         submitted=True,
                     )
                 return BrowserResult(
