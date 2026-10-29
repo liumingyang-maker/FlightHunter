@@ -265,8 +265,15 @@ def rematch_trip_benefits(session: Session, trip: Trip) -> list[TripBenefitMatch
             category = "wallet" if offer.claim_method == "PUBLIC_DISPLAY" else "sustained_watch"
 
         if offer.claim_method == "PUBLIC_DISPLAY" and state != TripMatchState.NOT_USABLE:
-            if "GEO_COUNTRY_UNKNOWN" not in reasons:
+            # candidate/unconfirmed 不进卡包推荐（仅持续关注）
+            if (
+                "GEO_COUNTRY_UNKNOWN" not in reasons
+                and offer.offer_status != "candidate"
+                and offer.date_certainty == "confirmed_for_dates"
+            ):
                 category = "wallet"
+            elif category != "sustained_watch":
+                category = "sustained_watch"
 
         existing = session.scalar(
             select(TripBenefitMatch).where(

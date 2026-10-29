@@ -279,13 +279,15 @@ async def fetch_source(
 
     result = await adapter.fetch(source.base_url)
     cand = ingest_fetch_result(session, source, result, module=module)
+    # 相对链接基准：优先最终 URL（重定向后）
+    parse_base = (result.final_url or source.base_url) if result.ok else source.base_url
     parsed: list[ParsedSignal] = []
     if result.ok and result.text:
         effective_module = module if module != "all" else (source.module or "fare")
         if effective_module == "trip" and hasattr(adapter, "parse_trip"):
-            parsed = adapter.parse_trip(result.text, url=source.base_url)[:20]  # type: ignore[attr-defined]
+            parsed = adapter.parse_trip(result.text, url=parse_base)[:20]  # type: ignore[attr-defined]
         else:
-            parsed = adapter.parse(result.text, url=source.base_url)[:20]
+            parsed = adapter.parse(result.text, url=parse_base)[:20]
 
     effective_module = module if module != "all" else (source.module or "fare")
     if cand is not None:

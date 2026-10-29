@@ -290,7 +290,7 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
 
 
 def parse_trip_label(label: str, *, page_url: str) -> ParsedSignal | None:
-    """行程福利：券/折扣/祭典等；不含机票误分类。"""
+    """行程福利：券/折扣/祭典；区分门槛与减免额（满A减B）。"""
     if not label or len(label) < 4:
         return None
     low = label.lower()
@@ -298,16 +298,26 @@ def parse_trip_label(label: str, *, page_url: str) -> ParsedSignal | None:
         return None
     if any(k in label for k in ("甩尾", "漏油", "错价票")):
         return None
+    # 满X减Y：面值用减免额 Y，门槛记入 raw
+    m_spent = re.search(r"满\s*(\d[\d,]*)\s*元\s*减\s*(\d[\d,]*)\s*元", label)
     price = None
-    m = _PRICE_RE.search(label)
-    if m:
+    conditions_note = None
+    if m_spent:
         try:
-            price = float(m.group(1).replace(",", ""))
+            price = float(m_spent.group(2).replace(",", ""))
+            conditions_note = f"min_spend={m_spent.group(1)}"
         except ValueError:
             price = None
+    else:
+        m = _PRICE_RE.search(label)
+        if m:
+            try:
+                price = float(m.group(1).replace(",", ""))
+            except ValueError:
+                price = None
     return ParsedSignal(
         title=label[:200],
-        raw_claim_text=label,
+        raw_claim_text=(conditions_note + " " + label) if conditions_note else label,
         url=page_url if page_url.startswith("http") else None,
         reported_total=price,
         currency="CNY" if price is not None else None,
