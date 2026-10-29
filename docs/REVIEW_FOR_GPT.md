@@ -1,4 +1,11 @@
-# FlightHunter V1.0（R3）— 提交 ChatGPT 独立审核说明
+## 0. HEAD 当前状态（与历史章节分离）
+
+- **最新测试（开发环境）**：`105 passed` · `ruff` 全绿  
+- **鉴权**：已接入 Bearer/Cookie；未登录私人 API → 401  
+- **最新提交**：见 Git `develop`；差分审核 ZIP 每轮必出（`AGENTS.md` §4）  
+- 历史章节中的 “54 passed / 无鉴权” 仅作演进记录，**不代表当前 HEAD**
+
+---
 
 **仓库**：https://github.com/liumingyang-maker/FlightHunter  
 **分支**：`develop`（默认）  
@@ -25,10 +32,10 @@ uv run python -m app.cli discover --dry-run
 uv run python -m app.cli web --host 127.0.0.1 --port 8765
 ```
 
-3. **最近一次本地结果（2026-10-29）**：
-   - `pytest`：**54 passed**
-   - `ruff check`：**All checks passed**
-   - 提交历史：`ec91367` → `584600a` → `b1c60d6` → `a20aea4`
+3. **最近一次本地结果（HEAD 见 §0）**：
+   - `pytest`：见 §0（当前 **105 passed**）
+   - `ruff check`：All checks passed
+   - 早期提交历史仅作演进参考
 
 4. 请**重点验证**「是否用 Mock/空接口冒充 done」（见第 6 节反作弊清单）。
 
@@ -301,7 +308,14 @@ git grep -n "assert_public_http_url\|ensure_aware_utc\|_is_trusted_quote" -- app
 |---|---|---|---|
 | 例：P0-01 核实过松 | 采纳 | 可导致虚假 verified | 同源+购买+日期门槛 |
 | 例：CAPTCHA 应否定 verified | 不采纳（已改） | CAPTCHA 只影响自动化，不否定官方真实性 | 分离 has_captcha 与 automation_policy |
-| （下一轮填写） | | | |
+| FH-R3-P0-01 关键词伪 verified | **采纳** | 无主办方域与细则链接仍可 verified | Organizer.official_domain + 同源 `<a href>` 细则链接 |
+| FH-R3-P0-02 报价全链 | **采纳** | 白名单+TTL 仍不够 | 另须 availability_confirmed、depart_date、币种 CNY、tax 已知 |
+| FH-R3-P0-03 DNS SSRF | **采纳** | 字符串校验挡不住 DNS 指向内网 | resolve_and_assert_public_host；fetch 前解析；trust_env=False |
+| FH-R3-P1-01 event/ redeem 冲突 | **采纳** | 购物券 6 月使用/5 月活动被 usable | shopping 类仅 redeem 可 confirmed |
+| FH-R3-P1-03 robots 默认放行 | **采纳** | 403/异常应 fail-closed | 非 200 → 拒绝抓取 |
+| FH-R3-P2-03 白名单 load_settings | **部分采纳** | 注入 settings 参数已支持 | 运行时默认仍 load_settings，CLI 可后续统一注入 |
+| 立刻合 main / 实网无人值守 | **不采纳** | I5/I10 等仍 partial；设计包禁止 | 继续 develop |
+| FH-R3-P1-05 Playwright 闭环 | **暂缓（如实 partial）** | 依赖本地模拟站与授权，非本轮 P0 能关 | 保持 partial/blocked，不标 done |
 
 实现方对 GPT 建议保留最终取舍权；分歧必须书面说明，不得静默忽略，也不得无理由全盘照搬。
 

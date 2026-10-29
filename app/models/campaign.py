@@ -43,6 +43,8 @@ class Campaign(Base, UUIDPk, TimestampMixin):
     tags: Mapped[str] = mapped_column(Text, default="[]")
     legacy_seed: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    organizer = relationship("Organizer", lazy="selectin")
+
 
 class CampaignRound(Base, UUIDPk, TimestampMixin):
     """一届/一次具体报名期。"""

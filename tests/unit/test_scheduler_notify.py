@@ -46,7 +46,7 @@ def test_extract_fields_conservative(db):
 
 
 def test_verify_needs_review_without_enough_evidence(db):
-    org = Organizer(id=new_id(), name="O")
+    org = Organizer(id=new_id(), name="O", official_domain="example.org")
     db.add(org)
     db.flush()
     camp = Campaign(id=new_id(), organizer_id=org.id, program_key="pk1", name="C")
@@ -69,7 +69,7 @@ def test_verify_needs_review_without_enough_evidence(db):
 
 
 def test_verify_with_evidence_can_pass(db):
-    org = Organizer(id=new_id(), name="O2")
+    org = Organizer(id=new_id(), name="O2", official_domain="example.org")
     db.add(org)
     db.flush()
     camp = Campaign(id=new_id(), organizer_id=org.id, program_key="pk2", name="C2")
@@ -89,7 +89,7 @@ def test_verify_with_evidence_can_pass(db):
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
         "<body><p>Enter to win. No purchase necessary. Closes 2027-03-01. "
-        "See Official Rules and eligibility.</p></body></html>"
+        '<a href="/rules">Official Rules</a></p></body></html>'
     )
     complete_verify_from_html(db, r, html)
     db.commit()

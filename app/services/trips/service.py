@@ -282,8 +282,14 @@ def rematch_trip_benefits(session: Session, trip: Trip) -> list[TripBenefitMatch
 
 
 def _date_overlap(trip: Trip, offer: BenefitOffer) -> str:
-    """使用期优先；领取期 ≠ 可用期；低置信度日期不得 confirmed。"""
+    """分类时间窗（FH-R3-P1-01）：
+    - shopping_discount 等消费券：必须以 **redeem（使用期）** 判定 confirmed；
+      event 重叠不能单独把购物券标为可用。
+    - event 类活动：以 event 窗为准。
+    - 低置信度：永不 confirmed。
+    """
     certainty = offer.date_certainty
+    category = (offer.category or "").lower()
     low_confidence = certainty in (
         "historical_reference",
         "not_yet_announced",
@@ -305,26 +311,65 @@ def _date_overlap(trip: Trip, offer: BenefitOffer) -> str:
         ee = e or trip.local_end_date
         return overlaps(trip.local_start_date, trip.local_end_date, ss, ee)
 
-    # 低置信度：任何重叠最多 maybe_usable
     if low_confidence:
         for win in (redeem, event, claim, booking):
             if win is not None and _ov(*win):
                 return "unconfirmed"
         return "unconfirmed"
 
-    # 使用期 / 活动期（仅 confirmed_for_dates）
-    for win in (redeem, event):
-        if win is not None and _ov(*win):
-            return "confirmed"
+    shopping_like = (
+        category
+        in (
+            "shopping_discount",
+            "dining_discount",
+            "transit_discount",
+            "voucher",
+        )
+        or "discount" in category
+        or "coupon" in category
+    )
 
-    if redeem is not None or event is not None:
-        for win in (redeem, event):
-            if win is not None and not _ov(*win):
+    if shopping_like or category == "event":
+        # 购物券必须 redeem；活动类必须 event（若有）
+        if shopping_like:
+            if redeem is None:
+                # 购物券无使用期：最多 unconfirmed
+                if event is not None and _ov(*event):
+                    return "unconfirmed"
                 if claim is not None and _ov(*claim):
                     return "unconfirmed"
+                return "unconfirmed"
+            if _ov(*redeem):
+                return "confirmed"
+            # redeem 存在但不重叠：即使 event 重叠也不 usable
+            if event is not None and _ov(*event):
                 return "none"
-        return "none"
+            if claim is not None and _ov(*claim):
+                return "unconfirmed"
+            return "none"
+        # event 类
+        if event is not None:
+            if _ov(*event):
+                return "confirmed"
+            if redeem is not None and _ov(*redeem):
+                return "unconfirmed"
+            return "none"
+        if redeem is not None and _ov(*redeem):
+            return "unconfirmed"
+        return "unconfirmed"
 
+    # 通用：redeem 优先
+    if redeem is not None and _ov(*redeem):
+        return "confirmed"
+    if event is not None and _ov(*event):
+        # redeem 已知且不重叠 → 不得因 event 升级
+        if redeem is not None and not _ov(*redeem):
+            return "none"
+        return "confirmed"
+    if redeem is not None or event is not None:
+        if claim is not None and _ov(*claim):
+            return "unconfirmed"
+        return "none"
     if claim is not None or booking is not None:
         return "unconfirmed"
     return "none"

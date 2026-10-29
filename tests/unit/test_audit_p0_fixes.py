@@ -39,7 +39,7 @@ from sqlalchemy import select
 
 
 def _round(db, official_url="https://example.org/campaign") -> CampaignRound:
-    org = Organizer(id=new_id(), name="O")
+    org = Organizer(id=new_id(), name="O", official_domain="example.org")
     db.add(org)
     db.flush()
     camp = Campaign(id=new_id(), organizer_id=org.id, program_key=f"k{new_id()[:8]}", name="C")
@@ -87,7 +87,7 @@ def test_p001_can_verify_same_site_with_purchase_and_date(db):
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
         "<body><p>Enter to win. No purchase necessary. Entry closes 2027-03-01. "
-        "See Official Rules and eligibility.</p></body></html>"
+        '<p><a href="/rules/2027">Official Rules</a></p></p></body></html>'
     )
     complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
     db.commit()
@@ -100,7 +100,7 @@ def test_p001_captcha_does_not_block_official_verified(db):
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
         "<body><p>Enter to win. No purchase necessary. Entry closes 2027-03-01. "
-        "Official Rules apply.</p>"
+        '<a href="/rules">Official Rules</a>'
         "<p>Please complete the captcha to continue.</p></body></html>"
     )
     complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
@@ -116,7 +116,7 @@ def test_p001_captcha_downgrades_auto_policy(db):
     html = (
         "<html><head><title>Official Flight Giveaway</title></head>"
         "<body><p>Enter to win. No purchase necessary. Entry closes 2027-03-01. "
-        "Official Rules apply.</p>"
+        '<a href="https://example.org/rules">Official Rules</a>'
         "<div>captcha</div></body></html>"
     )
     complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
@@ -168,7 +168,7 @@ def test_p002_untrusted_quote_not_urgent_verified(db):
 def test_p002_trusted_fresh_matching_quote_can_be_urgent(db, monkeypatch):
     monkeypatch.setattr(
         "app.services.fare.service._provider_whitelist",
-        lambda: {"authorized_provider"},
+        lambda settings=None: {"authorized_provider"},
     )
     deal, _ = import_signal(
         db,
@@ -194,7 +194,11 @@ def test_p002_trusted_fresh_matching_quote_can_be_urgent(db, monkeypatch):
         total_price=3200,
         origin="CKG",
         destination="HND",
+        depart_date=date(2027, 5, 15),
+        taxes_included=True,
+        baggage_included=True,
         quote_expiry_utc=datetime.now(UTC) + timedelta(hours=6),
+        availability_confirmed=True,
     )
     db.flush()
     matches = match_watch_to_deals(db, watch)

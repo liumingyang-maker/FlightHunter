@@ -36,7 +36,7 @@ from app.web.auth import (
 
 
 def _round(db, official_url: str = "https://example.org/campaign") -> CampaignRound:
-    org = Organizer(id=new_id(), name="O")
+    org = Organizer(id=new_id(), name="O", official_domain="example.org")
     db.add(org)
     db.flush()
     camp = Campaign(id=new_id(), organizer_id=org.id, program_key=f"k{new_id()[:8]}", name="C")
@@ -73,7 +73,8 @@ def test_campaign_page_with_rules_can_verify(db):
     html = (
         "<html><head><title>Win a Trip Official Giveaway</title></head>"
         "<body><p>Enter to win. No purchase necessary. "
-        "Entry closes 2027-03-01. See Official Rules and eligibility.</p></body></html>"
+        "Entry closes 2027-03-01. "
+        '<a href="/official-rules">Official Rules</a></p></body></html>'
     )
     complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
     db.commit()
@@ -128,7 +129,7 @@ def test_fake_provider_quote_not_urgent_verified(db):
 def test_over_budget_not_urgent_verified(db, monkeypatch):
     monkeypatch.setattr(
         "app.services.fare.service._provider_whitelist",
-        lambda: {"authorized_provider"},
+        lambda settings=None: {"authorized_provider"},
     )
     deal, _ = import_signal(
         db,
@@ -163,6 +164,10 @@ def test_over_budget_not_urgent_verified(db, monkeypatch):
         origin="CKG",
         destination="NRT",
         quote_expiry_utc=datetime.now(UTC) + timedelta(hours=6),
+        depart_date=date(2027, 5, 15),
+        taxes_included=True,
+        baggage_included=True,
+        availability_confirmed=True,
     )
     db.flush()
     matches = match_watch_to_deals(db, watch)
@@ -176,7 +181,7 @@ def test_over_budget_not_urgent_verified(db, monkeypatch):
 def test_trusted_whitelisted_quote_can_urgent(db, monkeypatch):
     monkeypatch.setattr(
         "app.services.fare.service._provider_whitelist",
-        lambda: {"authorized_provider"},
+        lambda settings=None: {"authorized_provider"},
     )
     deal, _ = import_signal(
         db,
@@ -202,7 +207,11 @@ def test_trusted_whitelisted_quote_can_urgent(db, monkeypatch):
         total_price=3200,
         origin="CKG",
         destination="NRT",
+        depart_date=date(2027, 5, 15),
+        taxes_included=True,
+        baggage_included=True,
         quote_expiry_utc=datetime.now(UTC) + timedelta(hours=6),
+        availability_confirmed=True,
     )
     db.flush()
     matches = match_watch_to_deals(db, watch)
@@ -245,9 +254,22 @@ def test_html_fetch_redirect_blocked_before_request(monkeypatch):
 
         async def get(self, url, **kwargs):
             called.append(url)
+            if url.endswith("/robots.txt"):
+
+                class R:
+                    status_code = 200
+                    text = "User-agent: *\nAllow: /\n"
+
+                return R()
             return FakeResp()
 
     monkeypatch.setattr("app.adapters.html_fetcher.httpx.AsyncClient", lambda **k: FakeClient())
+    import socket
+
+    monkeypatch.setattr(
+        "socket.getaddrinfo",
+        lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))],
+    )
     result = asyncio.run(adapter.fetch("https://example.org/campaign"))
     assert result.ok is False
     assert result.error_code == "URL_NOT_PUBLIC"

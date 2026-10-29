@@ -227,7 +227,7 @@ def test_mark_booked_user_reported(db):
 def test_quote_observed_vs_signal(db, monkeypatch):
     monkeypatch.setattr(
         "app.services.fare.service._provider_whitelist",
-        lambda: {"authorized_demo"},
+        lambda settings=None: {"authorized_demo"},
     )
     deal, _ = import_signal(
         db,
@@ -252,9 +252,11 @@ def test_quote_observed_vs_signal(db, monkeypatch):
         total_price=3200,
         origin="CKG",
         destination="HND",
+        depart_date=date(2027, 5, 15),
         taxes_included=True,
-        baggage_included=False,
+        baggage_included=True,
         quote_expiry_utc=datetime.now(UTC) + timedelta(hours=12),
+        availability_confirmed=True,
     )
     db.flush()
     matches = match_watch_to_deals(db, watch)

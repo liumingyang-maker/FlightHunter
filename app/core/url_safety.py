@@ -106,7 +106,51 @@ def is_blocked_hostname(host: str) -> bool:
     return bool(h.startswith("ip6-localhost") or h.endswith(".localhost"))
 
 
-def assert_public_http_url(url: str, *, field: str = "url") -> None:
+def resolve_and_assert_public_host(host: str, *, field: str = "url") -> list[str]:
+    """DNS 解析主机，全部 A/AAAA 必须为公网地址；返回通过的 IP 列表。
+
+    用于连接前校验（含 rebinding 防护的第一道）。无法解析 → 拒绝（fail-closed）。
+    """
+    import socket
+
+    if is_blocked_hostname(host):
+        raise FlightHunterError(
+            ErrorCode.URL_NOT_PUBLIC,
+            f"主机名不安全或禁止: {host}",
+            details={"field": field, "host": host},
+        )
+    try:
+        infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except OSError as exc:
+        raise FlightHunterError(
+            ErrorCode.URL_NOT_PUBLIC,
+            f"无法解析主机（fail-closed）: {host} ({exc})",
+            details={"field": field, "host": host},
+        ) from exc
+    ips: list[str] = []
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            continue
+        if _blocked_ip(ip):
+            raise FlightHunterError(
+                ErrorCode.URL_NOT_PUBLIC,
+                f"DNS 解析到私网/保留地址，已拒绝: {host} -> {addr}",
+                details={"field": field, "host": host, "ip": str(ip)},
+            )
+        ips.append(str(ip))
+    if not ips:
+        raise FlightHunterError(
+            ErrorCode.URL_NOT_PUBLIC,
+            f"无有效公网解析结果: {host}",
+            details={"field": field, "host": host},
+        )
+    return ips
+
+
+def assert_public_http_url(url: str, *, field: str = "url", resolve_dns: bool = False) -> None:
     if not url or not isinstance(url, str):
         raise FlightHunterError(ErrorCode.URL_NOT_PUBLIC, "URL 为空")
     parsed = urlparse(url)
@@ -131,6 +175,8 @@ def assert_public_http_url(url: str, *, field: str = "url") -> None:
         )
     if parsed.port is not None and parsed.port == 0:
         raise FlightHunterError(ErrorCode.URL_NOT_PUBLIC, "非法端口")
+    if resolve_dns:
+        resolve_and_assert_public_host(host, field=field)
 
 
 def safe_redirect_target(url: str) -> None:

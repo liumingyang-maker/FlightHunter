@@ -310,18 +310,14 @@ def match_watch_to_deals(session: Session, watch: FareWatch) -> list[FareWatchMa
         elif latest_quote:
             price_status = latest_quote.quote_status or FareQuoteStatus.PROVIDER_UNKNOWN.value
             reasons.append("QUOTE_NOT_TRUSTED_FOR_VERIFIED")
-            if (
-                latest_quote.origin
-                and deal.origin
-                and latest_quote.origin.upper() != (deal.origin or "").upper()
-            ) or (
-                latest_quote.destination
-                and deal.destination
-                and latest_quote.destination.upper() != (deal.destination or "").upper()
-            ):
-                reasons.append("QUOTE_ROUTE_MISMATCH")
-            if latest_quote.quote_expiry_utc is None:
-                reasons.append("QUOTE_TTL_MISSING")
+            if not latest_quote.availability_confirmed:
+                reasons.append("QUOTE_INVENTORY_UNCONFIRMED")
+            if latest_quote.depart_date is None:
+                reasons.append("QUOTE_DATE_MISSING")
+            if (latest_quote.currency or "").upper() != "CNY":
+                reasons.append("QUOTE_CURRENCY_MISMATCH")
+            if latest_quote.tax_included is None:
+                reasons.append("QUOTE_TAX_UNKNOWN")
         else:
             price_status = FareQuoteStatus.NOT_QUERIED.value
             reasons.append("NO_AUTHORIZED_QUOTE")
@@ -482,9 +478,11 @@ _BANNED_TRUSTED_PROVIDER = frozenset(
 )
 
 
-def _provider_whitelist() -> set[str]:
-    """从当前进程 Settings 读白名单；未配置则空集（禁止 urgent_verified）。"""
+def _provider_whitelist(settings=None) -> set[str]:
+    """白名单：优先注入的 Settings；否则 load_settings。空集 = 禁止 urgent_verified。"""
     try:
+        if settings is not None:
+            return {p.lower() for p in settings.airfare_radar.trusted_quote_providers}
         from app.config import load_settings
 
         s = load_settings()
@@ -499,8 +497,12 @@ def _is_trusted_quote(
     watch_adults: int,
     deal: FareDeal | None = None,
     whitelist: set[str] | None = None,
+    settings=None,
+    expected_currency: str = "CNY",
 ) -> bool:
-    """可信报价：白名单供应商 + 必须有未来 TTL + 人数匹配 + 航线一致 + 非社区源。"""
+    """可信可购报价全链门槛（FH-R3-P0-02）：
+    白名单 provider + 未来 TTL + 库存已确认 + 出发日 + 人数 + 航线 + 币种一致。
+    """
     if quote is None or quote.total_price is None:
         return False
     provider = (quote.provider or "").lower().strip()
@@ -508,10 +510,17 @@ def _is_trusted_quote(
         return False
     if "community" in provider or "user" in provider:
         return False
-    allowed = _provider_whitelist() if whitelist is None else whitelist
+    allowed = _provider_whitelist(settings) if whitelist is None else whitelist
     if provider not in allowed:
         return False
-    # 必须提供未来过期时间（P0-02：无 TTL 不可当作可购）
+    if not quote.availability_confirmed:
+        return False
+    if quote.depart_date is None:
+        return False
+    if (quote.currency or "").upper() != expected_currency.upper():
+        return False
+    if quote.tax_included is None:
+        return False
     from app.core.timeutils import ensure_aware_utc, utc_now
 
     if quote.quote_expiry_utc is None:
@@ -521,17 +530,12 @@ def _is_trusted_quote(
         return False
     if quote.pax_count != watch_adults:
         return False
-    # 航线必须与 deal 一致
     if deal is not None:
-        if quote.origin and deal.origin and quote.origin.upper() != (deal.origin or "").upper():
-            return False
-        if (
-            quote.destination
-            and deal.destination
-            and quote.destination.upper() != (deal.destination or "").upper()
-        ):
-            return False
         if not quote.origin or not quote.destination:
+            return False
+        if quote.origin.upper() != (deal.origin or "").upper():
+            return False
+        if quote.destination.upper() != (deal.destination or "").upper():
             return False
     return quote.quote_status not in (
         FareQuoteStatus.EXPIRED.value,
@@ -552,6 +556,10 @@ _BLOCK_URGENT_VERIFIED = frozenset(
         "HIGH_RISK_SEPARATE",
         "QUOTE_ROUTE_MISMATCH",
         "QUOTE_TTL_MISSING",
+        "QUOTE_INVENTORY_UNCONFIRMED",
+        "QUOTE_DATE_MISSING",
+        "QUOTE_CURRENCY_MISMATCH",
+        "QUOTE_TAX_UNKNOWN",
     }
 )
 

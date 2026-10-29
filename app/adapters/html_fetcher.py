@@ -17,7 +17,11 @@ from app.adapters.base import FetchResult, ParsedSignal, SourceAdapter
 from app.config import Settings
 from app.core.errors import ErrorCode
 from app.core.ids import content_hash_of_html
-from app.core.url_safety import assert_public_http_url, safe_redirect_target
+from app.core.url_safety import (
+    assert_public_http_url,
+    resolve_and_assert_public_host,
+    safe_redirect_target,
+)
 
 _MAX_REDIRECT_HOPS = 5
 
@@ -27,9 +31,10 @@ class HttpxFetchAdapter(SourceAdapter):
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._robots_cache: dict[str, robotparser.RobotFileParser] = {}
+        self._robots_cache: dict[str, robotparser.RobotFileParser | None] = {}
 
     async def _robots_allowed(self, client: httpx.AsyncClient, url: str) -> bool:
+        """robots 非 200 或异常 → fail-closed（不允许）。"""
         if not self.settings.sources.obey_robots_and_site_terms:
             return True
         parsed = urlparse(url)
@@ -40,16 +45,21 @@ class HttpxFetchAdapter(SourceAdapter):
                 resp = await client.get(f"{origin}/robots.txt", timeout=10)
                 if resp.status_code == 200:
                     rp.parse(resp.text.splitlines())
+                    self._robots_cache[origin] = rp
                 else:
-                    rp.parse([])
+                    self._robots_cache[origin] = None
             except Exception:
-                rp.parse([])
-            self._robots_cache[origin] = rp
-        return self._robots_cache[origin].can_fetch("*", url)
+                self._robots_cache[origin] = None
+        entry = self._robots_cache.get(origin)
+        if entry is None:
+            return False
+        return entry.can_fetch("*", url)
 
     async def fetch(self, url: str) -> FetchResult:
         try:
             assert_public_http_url(url)
+            host = (urlparse(url).hostname or "").lower()
+            resolve_and_assert_public_host(host)
         except Exception as exc:
             return FetchResult(
                 ok=False,
@@ -67,6 +77,7 @@ class HttpxFetchAdapter(SourceAdapter):
                 headers=headers,
                 timeout=timeout,
                 follow_redirects=False,
+                trust_env=False,
             ) as client:
                 for _hop in range(_MAX_REDIRECT_HOPS + 1):
                     try:

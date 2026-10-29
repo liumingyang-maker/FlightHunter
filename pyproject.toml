@@ -59,7 +59,13 @@ package = true
 target-version = "py312"
 line-length = 100
 src = ["app", "tests"]
-extend-exclude = ["_audit_round2_tmp", "_audit_tool_tmp", "review_exports", "data"]
+extend-exclude = [
+    "_audit_round2_tmp",
+    "_audit_round3_tmp",
+    "_audit_tool_tmp",
+    "review_exports",
+    "data",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
