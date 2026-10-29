@@ -455,6 +455,25 @@ def demo_browser_e2e(
     raise typer.Exit(2)
 
 
+@app.command("reconcile-stuck")
+def reconcile_stuck(
+    config: str | None = typer.Option(None, "--config"),
+) -> None:
+    """将卡在 submitting 的报名尝试全部转为 unknown。"""
+    settings = load_settings(config, project_root=_project_root())
+    from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
+    from app.services.entry.detail import reconcile_all_stuck
+
+    engine = create_db_engine(settings)
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        n = reconcile_all_stuck(session)
+        session.commit()
+        console.print(f"[green]已恢复 {n} 条卡住的 submitting → unknown[/green]")
+    engine.dispose()
+
+
 @app.command("list-deals")
 def list_deals(
     risk: str | None = typer.Option(None, "--risk"),

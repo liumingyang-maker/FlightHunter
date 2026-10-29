@@ -3,6 +3,26 @@
 {% block content %}
 <div class="page-head"><h1>报名中心</h1></div>
 <p class="muted">未知结果禁止自动重试；模拟回执不会写入非 demo 活动的 confirmed。</p>
+
+<section class="card">
+  <h2>最近报名记录</h2>
+  {% if attempts %}
+  <table>
+    <thead><tr><th>活动</th><th>状态</th><th>回执</th><th>备注</th></tr></thead>
+    <tbody>
+      {% for a in attempts %}
+      <tr>
+        <td>{{ a.title or a.round_id }}</td>
+        <td><span class="badge">{{ a.status }}</span></td>
+        <td>{% if a.receipt %}{{ a.receipt.reference_code_masked }} · {{ "已核验" if a.receipt.verified else "未核验" }}{% else %}—{% endif %}</td>
+        <td class="muted">{{ a.notes }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">暂无报名记录</p>{% endif %}
+</section>
+
 {% for group, items in groups.items() %}
 <section class="card">
   <h2>{{ group }} <span class="badge">{{ items|length }}</span></h2>

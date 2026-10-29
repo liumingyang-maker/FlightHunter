@@ -200,6 +200,23 @@ def finish_submit_failed(session: Session, attempt: EntryAttempt, *, message: st
     return attempt
 
 
+def reconcile_stuck_submitting(session: Session, attempt: EntryAttempt) -> EntryAttempt:
+    """将卡在 submitting 的尝试标为 unknown（需人工核实），禁止自动重试。"""
+    if attempt.status != EntryStatus.SUBMITTING.value:
+        return attempt
+    assert_transition(
+        "entry", EntryStatus.SUBMITTING, EntryStatus.UNKNOWN, ENTRY_TRANSITIONS
+    )
+    prev = attempt.status
+    attempt.status = EntryStatus.UNKNOWN.value
+    attempt.error_code = ErrorCode.SUBMIT_OUTCOME_UNKNOWN.value
+    attempt.manual_review_required = True
+    attempt.notes = ((attempt.notes or "") + "\n[reconcile] 卡住的 submitting 已转 unknown")[:800]
+    session.flush()
+    _log_event(session, attempt, prev, attempt.status)
+    return attempt
+
+
 def cancel_entry(session: Session, attempt: EntryAttempt) -> EntryAttempt:
     ensure_no_unknown_submit_retry(EntryStatus(attempt.status))
     assert_transition(

@@ -115,10 +115,10 @@ def execute_browser_entry(
         local_mock and submit and explicit_submit_consent and plan.mode == "AUTO_ALLOWED"
     )
 
-    # GATE-02：提交前持久化 submitting
+    # GATE-02：提交前持久化 submitting（flush；由调用方 commit）
     if will_submit:
         begin_submit(session, attempt)
-        session.commit()
+        session.flush()
 
     mock_uri = local_mock.as_uri() if local_mock else None
     try:
@@ -253,7 +253,6 @@ def execute_browser_entry(
             entity_id=attempt.id,
         )
         session.flush()
-        session.commit()
         return BrowserPipelineResult(
             attempt_id=attempt.id,
             status=attempt.status,

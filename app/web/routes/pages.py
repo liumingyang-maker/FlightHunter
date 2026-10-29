@@ -173,9 +173,9 @@ def campaigns_page(request: Request, db: DbDep, settings: SettingsDep):
 def entries_page(request: Request, db: DbDep, settings: SettingsDep):
     templates = request.app.state.templates
     from app.services.entry.center import entry_center_view
+    from app.services.entry.detail import list_attempts_for_ui
 
     groups = entry_center_view(db)
-    # 简化为前端表格对象
     view = {}
     for g, items in groups.items():
         view[g] = [
@@ -188,10 +188,15 @@ def entries_page(request: Request, db: DbDep, settings: SettingsDep):
             }
             for i in items
         ]
+    attempts = list_attempts_for_ui(db, limit=20)
     return templates.TemplateResponse(
         request,
         "entries.html",
-        {"groups": view, "app_name": settings.app.name},
+        {
+            "groups": view,
+            "attempts": attempts,
+            "app_name": settings.app.name,
+        },
     )
 
 

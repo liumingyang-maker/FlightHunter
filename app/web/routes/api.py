@@ -593,6 +593,32 @@ def entry_center(db: DbDep):
     return _ok(entry_center_view(db))
 
 
+@router.get("/entries/attempts")
+def list_attempts(db: DbDep, limit: int = Query(30, le=200)):
+    from app.services.entry.detail import list_attempts_for_ui
+
+    return _ok(list_attempts_for_ui(db, limit=limit))
+
+
+@router.get("/entries/attempts/{attempt_id}")
+def get_attempt(attempt_id: str, db: DbDep):
+    from app.services.entry.detail import attempt_detail
+
+    detail = attempt_detail(db, attempt_id)
+    if detail.get("error") == "not_found":
+        raise HTTPException(status_code=404, detail="attempt not found")
+    return _ok(detail)
+
+
+@router.post("/entries/reconcile-stuck")
+def reconcile_stuck(db: DbDep):
+    from app.services.entry.detail import reconcile_all_stuck
+
+    n = reconcile_all_stuck(db)
+    db.commit()
+    return _ok({"reconciled_to_unknown": n})
+
+
 @router.get("/notifications")
 def notifications(db: DbDep, unread_only: bool = True, limit: int = Query(50, le=200)):
     from app.services.notify.service import list_unread
