@@ -236,7 +236,6 @@ def materialize_raffle_candidates(
     from app.models import Campaign, CampaignRound, Organizer
 
     created = 0
-    now = utc_now()
     for s in parsed[:limit]:
         title = (s.title or "").strip()[:200]
         if not title:

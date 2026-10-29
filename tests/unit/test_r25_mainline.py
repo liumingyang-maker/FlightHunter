@@ -63,7 +63,7 @@ def test_raffle_module_creates_candidate_round(db, settings: Settings, monkeypat
         if s.id != src.id:
             s.status = "inactive"
     db.commit()
-    results = asyncio.run(
+    asyncio.run(
         run_discovery(db, settings, module="raffle", dry_run=False, limit=5, after_fetch=False)
     )
     db.commit()
