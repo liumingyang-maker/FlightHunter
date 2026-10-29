@@ -199,6 +199,8 @@ def rematch_trip_benefits(session: Session, trip: Trip) -> list[TripBenefitMatch
     for offer in offers:
         countries = json.loads(offer.country_codes or "[]")
         cities = json.loads(offer.city_codes or "[]")
+        # 社区抓取的 travel_deal 无国家时：不得当全国可用（跨国噪声）
+        geo_uncertain = not countries and (offer.category or "") == "travel_deal"
 
         # 国家匹配
         country_ok = (
@@ -240,6 +242,11 @@ def rematch_trip_benefits(session: Session, trip: Trip) -> list[TripBenefitMatch
             if city_match == "city_dates_mismatch":
                 reasons.append("CITY_STAY_DATES_MISMATCH")
             category = "sustained_watch"
+        elif geo_uncertain:
+            # 无国家归属的社区福利：仅待核实候选，不进钱包/可用
+            state = TripMatchState.MAYBE_USABLE
+            reasons = ["GEO_COUNTRY_UNKNOWN"]
+            category = "sustained_watch"
         elif date_match == "confirmed":
             if city_match == "unknown_city":
                 state = TripMatchState.MAYBE_USABLE
@@ -258,7 +265,8 @@ def rematch_trip_benefits(session: Session, trip: Trip) -> list[TripBenefitMatch
             category = "wallet" if offer.claim_method == "PUBLIC_DISPLAY" else "sustained_watch"
 
         if offer.claim_method == "PUBLIC_DISPLAY" and state != TripMatchState.NOT_USABLE:
-            category = "wallet"
+            if "GEO_COUNTRY_UNKNOWN" not in reasons:
+                category = "wallet"
 
         existing = session.scalar(
             select(TripBenefitMatch).where(

@@ -199,8 +199,21 @@ class HttpxFetchAdapter(SourceAdapter):
         signals: list[ParsedSignal] = []
         for a in soup.find_all("a", href=True)[:200]:
             label = a.get_text(" ", strip=True)
-            href = a["href"] if a["href"].startswith("http") else url
+            href = urljoin(url, a["href"])
             sig = parse_deal_label(label, page_url=href)
+            if sig:
+                signals.append(sig)
+            if len(signals) >= 50:
+                break
+        return signals
+
+    def parse_trip(self, text: str, *, url: str) -> list[ParsedSignal]:
+        soup = BeautifulSoup(text, "html.parser")
+        signals: list[ParsedSignal] = []
+        for a in soup.find_all("a", href=True)[:200]:
+            label = a.get_text(" ", strip=True)
+            href = urljoin(url, a["href"])
+            sig = parse_trip_label(label, page_url=href)
             if sig:
                 signals.append(sig)
             if len(signals) >= 50:
@@ -210,7 +223,22 @@ class HttpxFetchAdapter(SourceAdapter):
 
 _IATA_RE = re.compile(r"\b([A-Z]{3})\b")
 _PRICE_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*元")
+_FARE_KW = ("机票", "flight", "airfare", "特价机票", "往返", "单程")
 _DEAL_KW = ("元", "BUG", "错价", "神价", "特价", "促销", "甩尾", "漏油", "尾单")
+_TRIP_KW = (
+    "券",
+    "折扣",
+    "优惠",
+    "满减",
+    "免费",
+    "祭典",
+    "活动",
+    "coupon",
+    "discount",
+    "festival",
+    "free",
+    "promo",
+)
 _RISK_KW = {
     "hidden_city": ("甩尾", "hidden city", "hidden-city"),
     "error_fare": ("BUG", "错价", "error fare", "error-fare"),
@@ -220,16 +248,21 @@ _RISK_KW = {
 
 
 def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
-    """从中文/混合标签抽取航线、价格与风险子类型；识别不出则字段为 None。"""
+    """机票线索：需机票语义或双 IATA+金额，避免餐饮满减误入。"""
     if not label or len(label) < 6:
         return None
-    if not any(k in label for k in _DEAL_KW):
+    low = label.lower()
+    has_deal_kw = any(k in low or k in label for k in _DEAL_KW)
+    has_flight_kw = any(k in low or k in label for k in _FARE_KW)
+    if not has_deal_kw and not has_flight_kw:
         return None
     codes = [c for c in _IATA_RE.findall(label) if c.isalpha() and c.isupper()]
     skip = {"AND", "THE", "BUG", "YQ", "USA", "USD", "CNY", "VIP", "APP"}
     codes = [c for c in codes if c not in skip]
     origin = codes[0] if len(codes) >= 2 else None
     dest = codes[1] if len(codes) >= 2 else None
+    if origin is None and not has_flight_kw:
+        return None
     price = None
     m = _PRICE_RE.search(label)
     if m:
@@ -238,22 +271,47 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
         except ValueError:
             price = None
     types: list[str] = []
-    low = label.lower()
     for t, kws in _RISK_KW.items():
         if any(k.lower() in low or k in label for k in kws):
             types.append(t)
     if not types:
-        types = ["unclassified"]
+        types = ["flash_sale"] if (has_flight_kw or origin) else ["unclassified"]
     return ParsedSignal(
         title=label[:200],
         raw_claim_text=label,
         url=page_url if page_url.startswith("http") else None,
         reported_total=price,
         currency="CNY" if price is not None else None,
-        party_size=None,
         origin_airport=origin,
         destination_airport=dest,
         deal_types=types,
+        confidence="low",
+    )
+
+
+def parse_trip_label(label: str, *, page_url: str) -> ParsedSignal | None:
+    """行程福利：券/折扣/祭典等；不含机票误分类。"""
+    if not label or len(label) < 4:
+        return None
+    low = label.lower()
+    if not any(k in low or k in label for k in _TRIP_KW):
+        return None
+    if any(k in label for k in ("甩尾", "漏油", "错价票")):
+        return None
+    price = None
+    m = _PRICE_RE.search(label)
+    if m:
+        try:
+            price = float(m.group(1).replace(",", ""))
+        except ValueError:
+            price = None
+    return ParsedSignal(
+        title=label[:200],
+        raw_claim_text=label,
+        url=page_url if page_url.startswith("http") else None,
+        reported_total=price,
+        currency="CNY" if price is not None else None,
+        deal_types=["unclassified"],
         confidence="low",
     )
 

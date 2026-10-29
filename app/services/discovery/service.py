@@ -281,9 +281,15 @@ async def fetch_source(
     cand = ingest_fetch_result(session, source, result, module=module)
     parsed: list[ParsedSignal] = []
     if result.ok and result.text:
-        parsed = adapter.parse(result.text, url=source.base_url)[:20]
+        effective_module = module if module != "all" else (source.module or "fare")
+        if effective_module == "trip" and hasattr(adapter, "parse_trip"):
+            parsed = adapter.parse_trip(result.text, url=source.base_url)[:20]  # type: ignore[attr-defined]
+        else:
+            parsed = adapter.parse(result.text, url=source.base_url)[:20]
 
     effective_module = module if module != "all" else (source.module or "fare")
+    if cand is not None:
+        cand.module = effective_module
     signals_persisted = 0
     offers_persisted = 0
     if persist_signals and parsed:
@@ -293,10 +299,21 @@ async def fetch_source(
             )
             signals_persisted = len(sigs)
         elif effective_module == "trip":
+            cc = country_code or source.country_code
+            before = {
+                p.title[:400]
+                for p in parsed
+                if session.scalar(
+                    select(BenefitOffer.id).where(
+                        BenefitOffer.title == p.title[:400],
+                        BenefitOffer.source_id == source.id,
+                    )
+                )
+                is None
+            }
             for p in parsed:
-                if materialize_trip_offer(session, source, p, country_code=country_code):
-                    offers_persisted += 1
-        # raffle/shared：仅 RawCandidate，不伪造业务实体
+                materialize_trip_offer(session, source, p, country_code=cc)
+            offers_persisted = len(before)
 
     source.last_fetch_at = utc_now()
     session.flush()
