@@ -391,5 +391,34 @@ def generate_guide(session: Session, offer_id: str) -> RedemptionGuide:
     return guide
 
 
+def save_wallet_private_code(
+    session: Session,
+    settings,
+    *,
+    wallet_item_id: str,
+    plaintext_code: str,
+) -> WalletItem:
+    """加密写入卡包私密码；日志/导出不得出现明文。"""
+    from app.services.wallet.crypto import encrypt_secret
+
+    item = session.get(WalletItem, wallet_item_id)
+    if item is None:
+        raise NotFoundError("卡包条目不存在")
+    if not plaintext_code:
+        raise ValidationError("空券码")
+    item.private_code_encrypted = encrypt_secret(settings, plaintext_code)
+    session.flush()
+    return item
+
+
+def load_wallet_private_code(session: Session, settings, wallet_item_id: str) -> str | None:
+    from app.services.wallet.crypto import decrypt_secret
+
+    item = session.get(WalletItem, wallet_item_id)
+    if item is None or not item.private_code_encrypted:
+        return None
+    return decrypt_secret(settings, item.private_code_encrypted)
+
+
 def list_wallet(session: Session) -> list[WalletItem]:
     return list(session.scalars(select(WalletItem)).all())

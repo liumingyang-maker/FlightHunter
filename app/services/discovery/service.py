@@ -241,7 +241,7 @@ def match_and_alert_fare(session: Session, *, limit_watches: int = 20) -> dict[s
             alert = evaluate_alerts_for_match(session, m, watch=w)
             if alert:
                 alerted += 1
-                if alert.delivery_status == "pending":
+                if alert.delivery_status in ("pending", "recorded", "failed"):
                     n = send_notification(
                         session,
                         None,
@@ -251,10 +251,14 @@ def match_and_alert_fare(session: Session, *, limit_watches: int = 20) -> dict[s
                         severity="warning" if alert.alert_level != "digest" else "info",
                         entity_type="fare_alert",
                         entity_id=alert.id,
+                        try_toast=True,
                     )
-                    if n and "toast_delivered" in (n.body or ""):
+                    body_text = (n.body if n else "") or ""
+                    if "toast_delivered" in body_text:
                         alert.delivery_status = "delivered"
-                    elif n:
+                    elif "failed" in body_text and "windows_toast" in body_text:
+                        alert.delivery_status = "failed"
+                    else:
                         alert.delivery_status = "recorded"
     session.flush()
     return {"watches": len(watches), "matches": matched, "alerts": alerted}

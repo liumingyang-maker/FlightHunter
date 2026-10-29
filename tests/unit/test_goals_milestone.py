@@ -15,8 +15,7 @@ def test_encrypt_decrypt_roundtrip(tmp_path: Path):
     s = Settings()
     s.project_root = str(tmp_path)
     token = encrypt_secret(s, "SECRET-CODE-123")
-    assert token.startswith("v1:") or token.startswith("dpapi:")
-    # v1 路径可在同机解密；dpapi 也应在同 Windows 用户解密
+    assert token.startswith("dpapi:") or token.startswith("aesgcm:")
     assert decrypt_secret(s, token) == "SECRET-CODE-123"
 
 

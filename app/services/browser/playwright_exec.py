@@ -148,23 +148,34 @@ def fill_form_with_playwright(
                     warnings.append(f"字段未找到: {f.field_name}")
             receipt = None
             status = "prefilled"
+            clicked = False
             if will_submit:
                 page.click("#submit_btn, button[type=submit]")
-                page.wait_for_selector("#receipt_code", timeout=5000)
-                receipt = page.inner_text("#receipt_code").strip() or None
-                status = "confirmed" if receipt else "unknown"
+                clicked = True
+                try:
+                    page.wait_for_selector("#receipt_code", timeout=5000)
+                    receipt = page.inner_text("#receipt_code").strip() or None
+                    status = "confirmed" if receipt else "unknown"
+                except Exception:
+                    # 点击已发生但回执未知 → unknown，禁止自动重试
+                    status = "unknown"
+                    warnings.append("已点击提交但未见回执；结果 unknown，请人工核实")
             browser.close()
             return BrowserResult(
                 True,
                 plan.mode,
                 receipt_code=receipt,
                 status=status,
-                message="浏览器预填完成",
+                message="浏览器操作完成"
+                if status != "unknown"
+                else "提交结果未知",
                 warnings=warnings,
-                requires_human=plan.requires_human,
-                submitted=will_submit,
+                requires_human=plan.requires_human
+                + (["请人工核实是否报名成功"] if status == "unknown" else []),
+                submitted=clicked,
             )
     except Exception as exc:
+        # 若无法区分是否已点击，保守 failed 且不自动重试
         return BrowserResult(
             False, plan.mode, status="failed", message=str(exc), submitted=False
         )
