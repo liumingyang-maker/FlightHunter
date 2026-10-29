@@ -21,6 +21,35 @@ def to_utc(dt: datetime) -> datetime:
     return dt.astimezone(UTC)
 
 
+def ensure_aware_utc(dt: datetime | None) -> datetime | None:
+    """SQLite 等驱动可能返回 naive datetime；统一按 UTC 解释后再比较。"""
+    if dt is None:
+        return None
+    return to_utc(dt)
+
+
+def dt_gte(a: datetime | None, b: datetime | None) -> bool:
+    """安全比较：双方都转为 aware UTC。None 视为不满足。"""
+    aa, bb = ensure_aware_utc(a), ensure_aware_utc(b)
+    if aa is None or bb is None:
+        return False
+    return aa >= bb
+
+
+def dt_gt(a: datetime | None, b: datetime | None) -> bool:
+    aa, bb = ensure_aware_utc(a), ensure_aware_utc(b)
+    if aa is None or bb is None:
+        return False
+    return aa > bb
+
+
+def dt_lt(a: datetime | None, b: datetime | None) -> bool:
+    aa, bb = ensure_aware_utc(a), ensure_aware_utc(b)
+    if aa is None or bb is None:
+        return False
+    return aa < bb
+
+
 def local_date_in_tz(dt_utc: datetime, tz_name: str) -> date:
     return to_utc(dt_utc).astimezone(ZoneInfo(tz_name)).date()
 

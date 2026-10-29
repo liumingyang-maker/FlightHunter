@@ -300,20 +300,24 @@ def match_watch_to_deals(session: Session, watch: FareWatch) -> list[FareWatchMa
             .order_by(FareQuote.observed_at_utc.desc())
             .limit(1)
         )
-        price_status = (
-            FareQuoteStatus.OBSERVED.value if latest_quote else FareQuoteStatus.NOT_QUERIED.value
+        trusted = (
+            _is_trusted_quote(latest_quote, watch_adults=watch.adults) if latest_quote else None
         )
-        if not latest_quote:
+        if latest_quote and trusted:
+            price_status = FareQuoteStatus.OBSERVED.value
+        elif latest_quote:
+            price_status = latest_quote.quote_status or FareQuoteStatus.PROVIDER_UNKNOWN.value
+            reasons.append("QUOTE_NOT_TRUSTED_FOR_VERIFIED")
+        else:
+            price_status = FareQuoteStatus.NOT_QUERIED.value
             reasons.append("NO_AUTHORIZED_QUOTE")
 
         net_min = None
         net_max = None
-        if latest_quote and latest_quote.total_price is not None:
-            # 假设报价 pax_count 已覆盖 party；缩放仅在明确时做
+        if latest_quote and latest_quote.total_price is not None and trusted:
             net_min = latest_quote.total_price
             net_max = latest_quote.total_price
         else:
-            # 仅社区价：作为区间参考，不声称可买
             for s in signals:
                 if s.reported_total is not None:
                     net_min = (
@@ -408,9 +412,15 @@ def compute_cost_breakdown(
     if unknown:
         total_min = known_sum if base_ticket_total is not None else None
         total_max = None
+        notes = ["未含未知关键费用，不给出确定上界"]
     else:
         total_min = known_sum
         total_max = known_sum
+        notes = []
+    # 可选费用未知时：上界仍不可假精确（审核 I7）
+    if optional_unknown:
+        total_max = None
+        notes.append("可选必要费用未知，上界未知")
 
     return FareCostBreakdown(
         base_ticket_total=base_ticket_total,
@@ -423,7 +433,7 @@ def compute_cost_breakdown(
         total_min=total_min,
         total_max=total_max,
         unknown_fields=unknown + optional_unknown,
-        notes=["未含未知项时不给出假精确总价"] if unknown else [],
+        notes=notes,
     )
 
 
@@ -446,29 +456,66 @@ def historical_median_for_route(
     return median(r.total_price for r in rows), len(rows)
 
 
+def _is_trusted_quote(quote: FareQuote, *, watch_adults: int) -> bool:
+    """可信报价：授权源 + 未过期 + 人数匹配 + 非 community 源。"""
+    if quote is None or quote.total_price is None:
+        return False
+    provider = (quote.provider or "").lower()
+    if provider in ("community", "user_supplied", "manual_share"):
+        return False
+    if "community" in provider or "user" in provider:
+        return False
+    # 过期
+    if quote.quote_expiry_utc is not None:
+        from app.core.timeutils import ensure_aware_utc, utc_now
+
+        exp = ensure_aware_utc(quote.quote_expiry_utc)
+        if exp is not None and exp < utc_now():
+            return False
+    if quote.pax_count != watch_adults:
+        return False
+    return quote.quote_status not in (
+        FareQuoteStatus.EXPIRED.value,
+        FareQuoteStatus.UNAVAILABLE.value,
+        FareQuoteStatus.PROVIDER_UNKNOWN.value,
+    )
+
+
 def evaluate_alerts_for_match(
     session: Session, match: FareWatchMatch, *, watch: FareWatch
 ) -> FareAlert | None:
-    """三级提醒；无授权报价时不得 urgent_verified。"""
+    """三级提醒；仅可信报价可 urgent_verified（审核 P0-02）。"""
     deal = session.get(FareDeal, match.deal_id)
     if deal is None:
         return None
     reasons = json.loads(match.reason_codes or "[]")
-    has_quote = match.price_status == FareQuoteStatus.OBSERVED.value
+
+    quote = None
+    if match.price_status == FareQuoteStatus.OBSERVED.value:
+        quote = session.scalar(
+            select(FareQuote)
+            .where(FareQuote.deal_id == deal.id)
+            .order_by(FareQuote.observed_at_utc.desc())
+            .limit(1)
+        )
+    trusted = bool(quote and _is_trusted_quote(quote, watch_adults=watch.adults))
     high_risk = match.risk_match == FareRiskTier.HIGH_RISK.value
+    risk_noted = "QUOTE_NOT_TRUSTED_FOR_VERIFIED" in reasons or not trusted
 
     if high_risk:
         level = "digest"
         suppression = "high_risk_separate"
-    elif has_quote and not reasons:
+    elif trusted and not risk_noted and match.risk_match == "standard":
         level = "urgent_verified"
         suppression = None
-    elif has_quote:
-        level = "urgent_verified" if match.risk_match == "standard" else "digest"
-        suppression = None
+    elif trusted:
+        level = "digest"
+        suppression = "trusted_quote_but_risk_or_reasons"
     else:
         level = "urgent_unverified"
-        suppression = "community_only" if "PRICE_FROM_COMMUNITY_ONLY" in reasons else None
+        suppression = (
+            "community_only" if "PRICE_FROM_COMMUNITY_ONLY" in reasons else "no_trusted_quote"
+        )
 
     body_parts = [
         f"航线：{deal.origin or '?'} → {deal.destination or '?'}",
@@ -479,7 +526,7 @@ def evaluate_alerts_for_match(
         body_parts.append(f"参考成本区间：{match.net_cost_min} ~ {match.net_cost_max}")
     body_parts.append("报价≠成交价；请到正规出票平台自行核验并支付。")
 
-    title = f"{'神价线索' if not has_quote else '报价更新'} {deal.origin or ''}-{deal.destination or ''}"
+    title = f"{'报价更新' if trusted else '神价线索'} {deal.origin or ''}-{deal.destination or ''}"
     content_hash = stable_json_hash(
         {
             "deal": deal.id,

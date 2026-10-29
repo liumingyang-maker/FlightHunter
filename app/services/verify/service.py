@@ -1,6 +1,18 @@
-"""活动核实服务：candidate → verifying → verified/needs_review。"""
+"""活动核实服务：candidate → verifying → verified/needs_review。
+
+安全不变量（审核 P0-01）：
+- 仅凭标题 + 购买关键词 **不得** 标记 verified。
+- verified 必须同时满足：
+  1) source_url 与 official_url 同源（或明确 authorized_host）
+  2) 存在购买要求证据（明确 true/false，非 unknown）
+  3) 存在报名截止日期线索
+  4) 页面未出现 CAPTCHA 拦截迹象
+否则一律 needs_review。
+"""
 
 from __future__ import annotations
+
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
@@ -11,6 +23,22 @@ from app.core.state import (
 )
 from app.models import CampaignRound, Evidence
 from app.services.extract.service import build_evidence_rows, extract_official_fields
+
+
+def _host(url: str | None) -> str:
+    if not url:
+        return ""
+    return (urlparse(url).hostname or "").lower()
+
+
+def _same_site(a: str | None, b: str | None) -> bool:
+    ha, hb = _host(a), _host(b)
+    if not ha or not hb:
+        return False
+    if ha == hb:
+        return True
+    # 允许子域同站：a.b.com 与 b.com
+    return ha.endswith("." + hb) or hb.endswith("." + ha)
 
 
 def begin_verify(session: Session, round_: CampaignRound) -> CampaignRound:
@@ -39,17 +67,25 @@ def complete_verify_from_html(
     for row in rows:
         session.add(Evidence(**row))
 
-    # 必须有 title 与至少一条日期/购买线索才可能 verified；否则 needs_review
-    has_purchase = any(r["field_path"] == "purchase_required" for r in rows)
     if round_.verify_status != CampaignVerifyStatus.VERIFYING.value:
         begin_verify(session, round_)
 
-    if has_purchase and result.title:
+    purchase_fields = [r for r in rows if r["field_path"] == "purchase_required"]
+    has_purchase = any(
+        r["quote"] and ("purchase" in (r["quote"] or "").lower() or "购买" in (r["quote"] or ""))
+        for r in purchase_fields
+    )
+    has_date = any(r["field_path"] == "dates.clue" for r in rows)
+    same_site = _same_site(url, round_.official_url)
+    captcha = "HUMAN_CHALLENGE" in result.warnings
+
+    # 严格门槛：同源 + 购买要求 + 日期线索 + 无验证码阻断
+    can_verify = bool(same_site and has_purchase and has_date and not captcha and result.title)
+
+    if can_verify:
         target = CampaignVerifyStatus.VERIFIED
-        note = "已提取标题与购买要求线索；仍需人工复核完整条款"
     else:
         target = CampaignVerifyStatus.NEEDS_REVIEW
-        note = "证据不足，保持待核实"
 
     assert_transition(
         "campaign_round",
@@ -60,7 +96,6 @@ def complete_verify_from_html(
     round_.verify_status = target.value
     round_.rules_version_hash = result.content_hash
     session.flush()
-    _ = note
     return round_
 
 

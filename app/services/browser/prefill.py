@@ -4,17 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse
 
-from app.core.errors import ErrorCode, FlightHunterError
+from app.core.url_safety import assert_public_http_url
 from app.models import CampaignRound, Profile
 
-SAFE_SCHEMES = {"http", "https"}
-BLOCKED_HOST_SUFFIXES = (
-    "localhost",
-    "127.0.0.1",
-    "0.0.0.0",
-)
+# assert_public_http_url 来自 app.core.url_safety（覆盖私网/链路本地/元数据）
 
 
 @dataclass
@@ -32,15 +26,6 @@ class PrefillPlan:
     skipped: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     requires_human: list[str] = field(default_factory=list)
-
-
-def assert_public_http_url(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme not in SAFE_SCHEMES:
-        raise FlightHunterError(ErrorCode.URL_NOT_PUBLIC, f"非 http/https URL: {url}")
-    host = (parsed.hostname or "").lower()
-    if any(host == b or host.endswith("." + b) for b in BLOCKED_HOST_SUFFIXES):
-        raise FlightHunterError(ErrorCode.URL_NOT_PUBLIC, "禁止指向本地/回环地址")
 
 
 def build_prefill_plan(

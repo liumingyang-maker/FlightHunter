@@ -14,6 +14,7 @@ from app.adapters.base import FetchResult, ParsedSignal, SourceAdapter
 from app.config import Settings
 from app.core.errors import ErrorCode
 from app.core.ids import content_hash_of_html
+from app.core.url_safety import assert_public_http_url, safe_redirect_target
 
 
 class HttpxFetchAdapter(SourceAdapter):
@@ -42,21 +43,14 @@ class HttpxFetchAdapter(SourceAdapter):
         return self._robots_cache[origin].can_fetch("*", url)
 
     async def fetch(self, url: str) -> FetchResult:
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
+        try:
+            assert_public_http_url(url)
+        except Exception as exc:
             return FetchResult(
                 ok=False,
                 url=url,
                 error_code=ErrorCode.URL_NOT_PUBLIC.value,
-                message="仅允许 http/https",
-                fetched_at=datetime.now(UTC),
-            )
-        if parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
-            return FetchResult(
-                ok=False,
-                url=url,
-                error_code=ErrorCode.URL_NOT_PUBLIC.value,
-                message="禁止抓取本地/私网地址",
+                message=str(exc),
                 fetched_at=datetime.now(UTC),
             )
 
@@ -85,6 +79,18 @@ class HttpxFetchAdapter(SourceAdapter):
                     url=url,
                     error_code=ErrorCode.SOURCE_UNAVAILABLE.value,
                     message=str(exc),
+                    fetched_at=datetime.now(UTC),
+                )
+
+            try:
+                safe_redirect_target(str(resp.url))
+            except Exception as exc:
+                return FetchResult(
+                    ok=False,
+                    url=url,
+                    error_code=ErrorCode.URL_NOT_PUBLIC.value,
+                    message=f"重定向目标不安全: {exc}",
+                    final_url=str(resp.url),
                     fetched_at=datetime.now(UTC),
                 )
 

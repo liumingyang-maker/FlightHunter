@@ -200,6 +200,28 @@ docs/ADR/0001-project-bootstrap.md
 6. T01–T104 与测试文件的一一映射表尚未全部落盘为可执行用例  
 7. 移动端 390px 逐页视觉验收未做截图归档  
 8. Alembic 后续增量 revision 仅 initial  
+9. API 仍无登录鉴权（仅默认 127.0.0.1；公开前必须加）  
+10. 卡包 `encrypt_private_codes_and_receipts` 仅为配置位，完整加密存储未实现  
+
+---
+
+## 8b. GPT 独立审核（2026-10-29）响应与 P0 修复记录
+
+审核结论：部分通过。已按报告修复下列问题，并附回归测试 `tests/unit/test_audit_p0_fixes.py`：
+
+| 审核编号 | 问题 | 修复 | 回归测试 |
+|---|---|---|---|
+| P0-01 | 仅凭标题+购买词即可 verified | `verify/service.py`：须 **同源 + 购买证据 + 日期线索 + 无 CAPTCHA** 才 verified | test_p001_* |
+| P0-02 | 不可信报价可 urgent_verified | `_is_trusted_quote`：授权源、未过期、人数匹配；否则 urgent_unverified | test_p002_* |
+| P0-03 | SQLite naive/aware 时间比较崩溃 | `ensure_aware_utc`/`dt_gt`；调度与资格统一 | test_p003_* |
+| P0-04 | 无适配器任务标 completed | 无 fetch 时 `status=blocked`，不写 last_*_scan_at | test_p004_* |
+| P1 URL | 私网/元数据地址可通过 | `app/core/url_safety.py` 全面拦截 + 重定向再校验 | test_p1_private_* |
+| P1 日期 | 领取期误判为行程可用 | `_date_overlap` 使用期优先；五月领六月用 → 非 usable | test_p1_claim_month_* |
+| P1 成本 | 可选未知费用仍给上界 | 任一未知字段 total_max=None | test_p1_optional_cost_* |
+
+**本轮测试**：`72 passed` · `ruff` 全绿  
+
+**仍接受审核意见、尚未完成**：Playwright 实机填表、邮箱中奖检测、API 鉴权、卡包真实加密、完整 T01–T104 映射。  
 
 ---
 

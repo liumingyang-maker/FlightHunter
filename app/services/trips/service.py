@@ -282,29 +282,44 @@ def rematch_trip_benefits(session: Session, trip: Trip) -> list[TripBenefitMatch
 
 
 def _date_overlap(trip: Trip, offer: BenefitOffer) -> str:
-    """返回 confirmed / unconfirmed / none。null 窗口 = unconfirmed。"""
-    windows = [
-        (offer.redeem_starts_at_local, offer.redeem_ends_at_local),
-        (offer.event_starts_at_local, offer.event_ends_at_local),
-        (offer.claim_opens_at_local, offer.claim_closes_at_local),
-        (offer.booking_opens_at_local, offer.booking_closes_at_local),
-    ]
-    known_any = False
-    for start, end in windows:
+    """使用期优先；领取期 ≠ 可用期（审核 P1-01）。"""
+
+    def _pair(start, end):
         if start is None and end is None:
-            continue
-        known_any = True
-        s = start.date() if start else trip.local_start_date
-        e = end.date() if end else trip.local_end_date
-        if overlaps(trip.local_start_date, trip.local_end_date, s, e):
+            return None
+        return (start.date() if start else None, end.date() if end else None)
+
+    redeem = _pair(offer.redeem_starts_at_local, offer.redeem_ends_at_local)
+    event = _pair(offer.event_starts_at_local, offer.event_ends_at_local)
+    claim = _pair(offer.claim_opens_at_local, offer.claim_closes_at_local)
+    booking = _pair(offer.booking_opens_at_local, offer.booking_closes_at_local)
+
+    def _ov(s, e) -> bool:
+        ss = s or trip.local_start_date
+        ee = e or trip.local_end_date
+        return overlaps(trip.local_start_date, trip.local_end_date, ss, ee)
+
+    for win in (redeem, event):
+        if win is not None and _ov(*win):
             return "confirmed"
-    if not known_any and offer.date_certainty in (
+
+    if redeem is not None or event is not None:
+        # 使用期已知：若与行程不重叠，即使领取期重叠也不能标 confirmed
+        for win in (redeem, event):
+            if win is not None and not _ov(*win):
+                if claim is not None and _ov(*claim):
+                    return "unconfirmed"
+                return "none"
+        return "none"
+
+    if claim is not None or booking is not None:
+        return "unconfirmed"
+
+    if offer.date_certainty in (
         "unconfirmed",
         "not_yet_announced",
         "historical_reference",
     ):
-        return "unconfirmed"
-    if offer.date_certainty == "confirmed_for_dates" and not known_any:
         return "unconfirmed"
     return "none"
 

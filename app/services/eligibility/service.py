@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from typing import Any
 
 from app.core.state import EligibilityState
+from app.core.timeutils import ensure_aware_utc, utc_now
 from app.models import CampaignRound, Profile
 from app.schemas.common import EligibilityResultModel, RuleCheck
 
@@ -121,9 +121,11 @@ def evaluate_eligibility(
         )
         reasons.append("PROFILE_INFO_MISSING")
 
-    # 报名期是否已过期
-    now = datetime.now(UTC)
-    if round_.entry_closes_at_utc and round_.entry_closes_at_utc < now:
+    # 报名期是否已过期（SQLite 可能返回 naive，统一 UTC 后再比）
+    now = utc_now()
+    closes = ensure_aware_utc(round_.entry_closes_at_utc)
+    opens = ensure_aware_utc(round_.entry_opens_at_utc)
+    if closes and closes < now:
         checks.append(
             RuleCheck(
                 code="ENTRY_WINDOW",
@@ -134,7 +136,7 @@ def evaluate_eligibility(
             )
         )
         reasons.append("ENTRY_CLOSED")
-    elif round_.entry_opens_at_utc and round_.entry_opens_at_utc > now:
+    elif opens and opens > now:
         checks.append(
             RuleCheck(
                 code="ENTRY_WINDOW",

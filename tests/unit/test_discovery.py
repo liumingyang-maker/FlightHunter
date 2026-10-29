@@ -15,9 +15,7 @@ from sqlalchemy import select
 def test_dry_run_discovery(db, settings: Settings):
     ensure_default_sources(db, settings)
     db.commit()
-    results = asyncio.run(
-        run_discovery(db, settings, module="fare", dry_run=True, limit=5)
-    )
+    results = asyncio.run(run_discovery(db, settings, module="fare", dry_run=True, limit=5))
     assert results
     assert all(r["status"] == "dry_run" for r in results)
 
