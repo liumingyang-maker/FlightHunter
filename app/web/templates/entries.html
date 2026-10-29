@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}报名中心{% endblock %}
+{% block content %}
+<div class="page-head"><h1>报名中心</h1></div>
+<p class="muted">未知结果禁止自动重试；模拟回执不会写入非 demo 活动的 confirmed。</p>
+{% for group, items in groups.items() %}
+<section class="card">
+  <h2>{{ group }} <span class="badge">{{ items|length }}</span></h2>
+  {% if items %}
+  <table>
+    <thead><tr><th>活动</th><th>状态</th><th>下一步</th></tr></thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td>{{ it.title or it.round_id }}</td>
+        <td><span class="badge">{{ it.status }}</span></td>
+        <td>{{ it.why_stuck }}<br/><span class="muted">{{ it.next_step }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">无</p>{% endif %}
+</section>
+{% endfor %}
+{% endblock %}

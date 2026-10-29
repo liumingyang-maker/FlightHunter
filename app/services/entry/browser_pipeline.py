@@ -189,6 +189,35 @@ def execute_browser_entry(
         )
 
     if result.submitted and result.receipt_code:
+        # 模拟站回执不得把正式活动标成真实报名成功
+        if not round_.demo_only and local_mock is not None:
+            if attempt.status != "submitting":
+                begin_submit(session, attempt)
+            finish_submit_unknown(
+                session,
+                attempt,
+                message="模拟站回执不得用于非 demo 活动；请人工到真实官网确认",
+            )
+            send_notification(
+                session,
+                settings,
+                kind="entry_unknown",
+                title="模拟回执已忽略（非 demo 活动）",
+                body=f"{round_.title}\n模拟站回执不会写入正式 confirmed。",
+                severity="warning",
+                entity_type="entry_attempt",
+                entity_id=attempt.id,
+            )
+            session.flush()
+            return BrowserPipelineResult(
+                attempt_id=attempt.id,
+                status=attempt.status,
+                receipt_code=None,
+                browser_ok=True,
+                message="模拟回执已忽略；正式活动需真实官网确认",
+                warnings=result.warnings + ["DEMO_RECEIPT_NOT_APPLIED"],
+                requires_human=["请在真实官网完成报名并人工标记"],
+            )
         if attempt.status != "submitting":
             begin_submit(session, attempt)
         finish_submit_success(session, attempt, receipt_code=result.receipt_code)
@@ -197,7 +226,7 @@ def execute_browser_entry(
             session,
             settings,
             kind="entry_confirmed",
-            title="报名已确认",
+            title="报名已确认（演示活动）" if round_.demo_only else "报名已确认",
             body=f"{round_.title}\n回执已保存（通知中脱敏: {masked}）",
             severity="info",
             entity_type="entry_attempt",

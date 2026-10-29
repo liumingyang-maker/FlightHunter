@@ -169,6 +169,45 @@ def campaigns_page(request: Request, db: DbDep, settings: SettingsDep):
     )
 
 
+@router.get("/entries", response_class=HTMLResponse)
+def entries_page(request: Request, db: DbDep, settings: SettingsDep):
+    templates = request.app.state.templates
+    from app.services.entry.center import entry_center_view
+
+    groups = entry_center_view(db)
+    # 简化为前端表格对象
+    view = {}
+    for g, items in groups.items():
+        view[g] = [
+            {
+                "round_id": i.get("round_id"),
+                "title": i.get("title") or i.get("round_id"),
+                "status": i.get("status"),
+                "why_stuck": i.get("why_stuck"),
+                "next_step": i.get("next_step"),
+            }
+            for i in items
+        ]
+    return templates.TemplateResponse(
+        request,
+        "entries.html",
+        {"groups": view, "app_name": settings.app.name},
+    )
+
+
+@router.get("/notifications", response_class=HTMLResponse)
+def notifications_page(request: Request, db: DbDep, settings: SettingsDep):
+    templates = request.app.state.templates
+    notes = db.scalars(
+        select(Notification).order_by(Notification.created_at_utc.desc()).limit(100)
+    ).all()
+    return templates.TemplateResponse(
+        request,
+        "notifications.html",
+        {"notes": notes, "app_name": settings.app.name},
+    )
+
+
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, db: DbDep, settings: SettingsDep):
     templates = request.app.state.templates

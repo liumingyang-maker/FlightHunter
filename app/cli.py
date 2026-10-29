@@ -424,6 +424,7 @@ def demo_browser_e2e(
                 official_url="https://example.org/demo",
                 verify_status="verified",
                 automation_policy="PREFILL_AND_REVIEW",
+                demo_only=True,
             )
             session.add(rnd)
             session.flush()
@@ -449,7 +450,13 @@ def demo_browser_e2e(
                 ensure_ascii=False,
             )
         )
-    engine.dispose()
+        # 可机器判定：confirmed 才 exit 0；unknown/failed 非零
+        if result.status == "confirmed" and result.browser_ok:
+            engine.dispose()
+            raise typer.Exit(0)
+        console.print("[yellow]演示未达成 confirmed（unknown/failed/未提交）[/yellow]")
+        engine.dispose()
+        raise typer.Exit(2)
 
 
 @app.command("list-deals")
