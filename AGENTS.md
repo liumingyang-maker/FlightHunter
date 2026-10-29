@@ -37,6 +37,15 @@
 ## 4. 审核协作流程
 
 - 默认分支 `develop`；不 force push `main`；不自动合并。
+- **本机 PowerShell 规则（用户指定，必遵守）：**
+  - 本机已安装 **PowerShell 7**（`C:\Program Files\PowerShell\7\pwsh.exe`，当前 7.x）。
+  - 所有脚本启动、实机测试、工具包窗口（Web / Monitor / Sweep）**必须使用 `pwsh`**，禁止再用 Windows PowerShell 5.1（`powershell.exe`）。
+  - 原因：5.1 默认 ANSI/UTF-16 输出导致日志中文乱码与“binary log”误判；7 默认 UTF-8，参数绑定与错误流更可靠。
+  - 调用示例：
+    ```powershell
+    pwsh -NoProfile -ExecutionPolicy Bypass -File .\_first_live_test\1_start.ps1
+    ```
+  - 工具包内部 `Start-Process` 也必须指向 `pwsh.exe`，不得回落到 `powershell.exe`。
 - **常规迭代：** 每完成一批修改并 commit 后，可导出差分审核 ZIP：
   ```powershell
   uv run python tools/export_review_bundle.py --base <上次审核过的SHA>

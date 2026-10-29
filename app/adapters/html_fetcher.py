@@ -263,8 +263,27 @@ _RISK_KW = {
 
 
 def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
-    """机票线索：需机票语义或双 IATA+金额，避免餐饮满减误入。"""
+    """机票线索：需机票语义 +（金额|双 IATA|促销词），过滤纯攻略标题。"""
     if not label or len(label) < 6:
+        return None
+    # 纯教程/导航/问答标题：即使含“机票”也不当可查实信号
+    _noise = (
+        "怎么买",
+        "如何买",
+        "哪里订",
+        "在哪买",
+        "购买平台",
+        "预订平台",
+        "维权",
+        "指南",
+        "查询|",
+        "选择",
+        "潜规则",
+        "手把手",
+        "app",
+        "App",
+    )
+    if any(n in label for n in _noise) and "元" not in label:
         return None
     low = label.lower()
     has_deal_kw = any(k in low or k in label for k in _DEAL_KW)
@@ -276,8 +295,6 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
     codes = [c for c in codes if c not in skip]
     origin = codes[0] if len(codes) >= 2 else None
     dest = codes[1] if len(codes) >= 2 else None
-    if origin is None and not has_flight_kw:
-        return None
     price = None
     m = _PRICE_RE.search(label)
     if m:
@@ -285,6 +302,11 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
             price = float(m.group(1).replace(",", ""))
         except ValueError:
             price = None
+    # 仍需机票语义或双 IATA；金额/促销词再降噪
+    if origin is None and not has_flight_kw:
+        return None
+    if price is None and origin is None and not has_deal_kw:
+        return None
     types: list[str] = []
     for t, kws in _RISK_KW.items():
         if any(k.lower() in low or k in label for k in kws):
@@ -341,11 +363,54 @@ def parse_trip_label(label: str, *, page_url: str) -> ParsedSignal | None:
     )
 
 
+_RAFFLE_NAV_LABELS = frozenset(
+    {
+        "contest archives",
+        "blog giveaways",
+        "add a sweepstakes",
+        "monthly entry contests",
+        "weekly entry contests",
+        "daily entry contests",
+        "single entry contests",
+        "monthly sweepstakes",
+        "weekly sweepstakes",
+        "daily sweepstakes",
+        "contest tips",
+        "contests",
+        "sweepstakes",
+        "giveaways",
+        "contestgirl",
+        "sweepstakes today",
+        "enter to win",
+        "see more",
+        "read more",
+        "click here",
+        "home",
+        "about",
+        "contact",
+        "privacy",
+        "terms",
+        "submit",
+        "login",
+        "sign up",
+        "register",
+        "newsletter",
+    }
+)
+
+
 def parse_raffle_label(label: str, *, page_url: str) -> ParsedSignal | None:
     """抽奖线索：giveaway/sweepstakes 等；并粗分奖品类别标签进 deal_types。"""
     if not label or len(label) < 8:
         return None
-    low = label.lower()
+    low = " ".join(label.lower().split())
+    if low in _RAFFLE_NAV_LABELS:
+        return None
+    # 聚合站导航/分类：纯 “Monthly/Weekly/Daily … Contests/Sweepstakes/Giveaways”
+    if any(low.endswith(x) for x in (" contests", " sweepstakes", " giveaways")) and len(low.split()) <= 4:
+        return None
+    if low.startswith("add a ") or low in {"see all contests", "view all sweepstakes"}:
+        return None
     keys = (
         "giveaway",
         "sweepstake",

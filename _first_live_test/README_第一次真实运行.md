@@ -12,10 +12,10 @@
 ## 运行方法
 
 1. 解压时把整个 `_first_live_test` 文件夹放在 FlightHunter **Git 仓库根目录**，与 `app/`、`pyproject.toml` 同级。
-2. 在**仓库根目录**打开 PowerShell，执行：
+2. 在**仓库根目录**打开 **PowerShell 7（pwsh）**，执行（本机规则：实机测试一律用 pwsh，不用 powershell.exe / 5.1）：
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\_first_live_test\1_start.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\_first_live_test\1_start.ps1
 ```
 
 3. 窗口 A 是 Web（`http://127.0.0.1:8765/`）；窗口 B 是只读诊断；窗口 C 是限量真实来源抓取。原控制台只会给出隔离结果路径。

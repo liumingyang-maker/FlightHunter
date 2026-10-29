@@ -163,9 +163,11 @@ def discover(
         for r in results:
             sid = r.get("source_id") or "-"
             detail = r.get("message") or ""
-            if r.get("signals_persisted") is not None:
+            if r.get("signals_persisted") is not None or r.get("raffles_persisted") is not None:
                 detail += (
-                    f" | signals={r.get('signals_persisted')} offers={r.get('offers_persisted')}"
+                    f" | signals={r.get('signals_persisted')}"
+                    f" offers={r.get('offers_persisted')}"
+                    f" raffles={r.get('raffles_persisted')}"
                 )
             if r.get("status") == "post_match":
                 detail = f"matches={r.get('matches')} alerts={r.get('alerts')}"
@@ -208,6 +210,7 @@ def discover(
                                 "status",
                                 "signals_persisted",
                                 "offers_persisted",
+                                "raffles_persisted",
                             )
                         }
                         for r in results
