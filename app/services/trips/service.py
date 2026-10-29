@@ -290,30 +290,50 @@ def rematch_trip_benefits(session: Session, trip: Trip) -> list[TripBenefitMatch
     return results
 
 
-def _window_hits_any_segment(offer: BenefitOffer, segments: list) -> bool:
-    """使用/活动窗是否与任一匹配城市的停留日相交。"""
+def _applicable_windows(offer: BenefitOffer) -> tuple:
+    """按类别选出**唯一**适用的 (redeem, event) 窗；禁止跨类 OR 放行。"""
 
     def _pair(start, end):
         if start is None and end is None:
             return None
         return (start.date() if start else None, end.date() if end else None)
 
-    wins = [
-        _pair(offer.redeem_starts_at_local, offer.redeem_ends_at_local),
-        _pair(offer.event_starts_at_local, offer.event_ends_at_local),
-    ]
-    has_window = False
+    redeem = _pair(offer.redeem_starts_at_local, offer.redeem_ends_at_local)
+    event = _pair(offer.event_starts_at_local, offer.event_ends_at_local)
+    category = (offer.category or "").lower()
+    shopping_like = (
+        category
+        in (
+            "shopping_discount",
+            "dining_discount",
+            "transit_discount",
+            "voucher",
+        )
+        or "discount" in category
+        or "coupon" in category
+    )
+    if shopping_like:
+        return (redeem, None)
+    if category == "event":
+        return (None, event)
+    # 通用：有 redeem 用 redeem，否则 event
+    if redeem is not None:
+        return (redeem, None)
+    return (None, event)
+
+
+def _window_hits_any_segment(offer: BenefitOffer, segments: list) -> bool:
+    """适用窗是否与任一匹配城市的停留日相交（与 _date_overlap 同类窗）。"""
+    redeem, event = _applicable_windows(offer)
+    wins = [w for w in (redeem, event) if w is not None]
+    has_window = bool(wins)
     for win in wins:
-        if win is None:
-            continue
-        has_window = True
         s, e = win
         for seg in segments:
             ss = s or seg.start_date
             ee = e or seg.end_date
             if overlaps(seg.start_date, seg.end_date, ss, ee):
                 return True
-    # 无任何使用/活动窗：不因城市分段否决；有窗但未命中 → False
     return not has_window
 
 

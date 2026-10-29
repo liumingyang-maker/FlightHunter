@@ -82,7 +82,14 @@ async def fetch_source(
     module: str = "fare",
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """抓取单一来源；dry_run 不访问网络。"""
+    """抓取单一来源；dry_run 不访问网络。manual_only 禁止自动抓取。"""
+    if source.status == "manual_only" or source.access_policy == "manual_only":
+        return {
+            "source_id": source.id,
+            "status": "manual_only",
+            "error_code": "SOURCE_FETCH_DENIED",
+            "message": "来源仅限人工导入，不自动抓取",
+        }
     if source.access_policy in ("forbidden",) or source.allowed_fetch_mode == "none":
         return {
             "source_id": source.id,
@@ -138,7 +145,8 @@ async def run_discovery(
     dry_run: bool = True,
     limit: int = 10,
 ) -> list[dict[str, Any]]:
-    stmt = select(Source).where(Source.status.in_(["active", "manual_only"])).limit(limit)
+    # 仅 active：manual_only 不进入自动发现队列
+    stmt = select(Source).where(Source.status == "active").limit(limit)
     sources = list(session.scalars(stmt).all())
     if module != "all":
         sources = [s for s in sources if s.module in (module, "shared")]

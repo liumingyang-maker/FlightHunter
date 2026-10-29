@@ -101,13 +101,20 @@ def begin_verify(session: Session, round_: CampaignRound) -> CampaignRound:
 
 
 def _has_rules_body(html: str) -> bool:
-    """细则正文：去掉超链接文字后，页面仍含规则语义（FH-R4-P1-03）。"""
+    """细则正文：去掉超链接后仍含规则语义；拒绝 TBD/占位。"""
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(html, "html.parser")
     for a in soup.find_all("a"):
         a.extract()
     text = soup.get_text(" ", strip=True)
+    if re.search(
+        r"(eligibility\s*[:：]\s*(tbd|tbc|待定|coming\s*soon)|"
+        r"rules\s*[:：]\s*(tbd|tbc|待定))",
+        text,
+        re.I,
+    ):
+        return False
     has_rules_heading = bool(
         re.search(
             r"(official\s+rules|活动细则|官方规则|official\s+terms)",
@@ -115,7 +122,17 @@ def _has_rules_body(html: str) -> bool:
             re.I,
         )
     )
-    has_eligibility = bool(re.search(r"(eligibility|参赛资格|eligible|资格)", text, re.I))
+    # 资格：不能只是 TBD，需有实质描述
+    has_eligibility = bool(
+        re.search(
+            r"(eligib(?:le|ility)\s+(?:applies|open|is|are|must|shall|must be)|"
+            r"eligib(?:le|ility)\s*[:：]\s*(?!tbd|tbc|待定|coming)\S|"
+            r"参赛资格[^。]{0,40}|"
+            r"open to (residents|residing|entrants|legal))",
+            text,
+            re.I,
+        )
+    )
     return has_rules_heading and has_eligibility
 
 
