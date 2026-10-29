@@ -16,6 +16,13 @@ target_metadata = Base.metadata
 
 
 def _url() -> str:
+    # 优先使用 alembic 配置中显式设置的 URL（CLI migrate 会注入）
+    try:
+        url = config.get_main_option("sqlalchemy.url")
+        if url:
+            return url
+    except Exception:  # noqa: BLE001
+        pass
     settings = load_settings()
     return f"sqlite+pysqlite:///{sqlite_path(settings).as_posix()}"
 

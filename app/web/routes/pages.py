@@ -63,7 +63,10 @@ def login_submit(request: Request, token: str = Form(...), next: str = Form("/")
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request, db: DbDep, settings: SettingsDep):
     templates = request.app.state.templates
-    trip_count = db.scalar(select(func.count()).select_from(Trip).where(not Trip.demo_only)) or 0
+    trip_count = (
+        db.scalar(select(func.count()).select_from(Trip).where(Trip.demo_only == False))  # noqa: E712
+        or 0
+    )
     demo_trips = (
         db.scalar(
             select(func.count()).select_from(Trip).where(Trip.demo_only == True)  # noqa: E712
