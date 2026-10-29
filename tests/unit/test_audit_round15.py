@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.config import Settings
-from app.core.ids import new_id
 from app.schemas.domain import BenefitOfferCreate
 from app.services.benefits.service import (
     create_benefit_offer,
