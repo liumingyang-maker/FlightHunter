@@ -14,6 +14,10 @@
 - 设计包中的示例价格、URL、日本 2027 行程均为 **fixture/模拟**，不代表真实库存或用户行程。
 - 不自动购票/出票/付款/改签；不绕过 CAPTCHA / 2FA / 平台自动化禁令；不虚构资格结论。
 
+## 独立审核（ChatGPT / 外部）
+
+请阅读 **[docs/REVIEW_FOR_GPT.md](docs/REVIEW_FOR_GPT.md)**：实现矩阵、关键不变量 I1–I12、反作弊清单、本地复现命令与建议审核输出格式。
+
 ## 技术栈
 
 Python 3.12 · uv · httpx · Pydantic v2 · SQLAlchemy 2 · Alembic · SQLite(FTS5) · FastAPI · Jinja2/HTMX · Playwright · pytest · ruff · mypy
