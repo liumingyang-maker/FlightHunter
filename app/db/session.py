@@ -77,14 +77,16 @@ def get_session(factory: sessionmaker[Session]) -> Session:
 
 
 def ensure_default_sources(session: Session, settings: Settings) -> list[Source]:
-    """确保默认社区来源存在（access_policy 标明限制）。"""
+    """确保默认来源：机票社区 + 行程福利 + 抽奖公开页种子。"""
     created: list[Source] = []
     defaults = [
+        # fare
         {
             "name": "什么值得买 · 国际机票",
             "base_url": "https://www.smzdm.com/fenlei/guowaijipiao/",
             "kind": "community",
             "language": "zh-Hans",
+            "country_code": None,
             "access_policy": "public_fetch",
             "allowed_fetch_mode": "httpx",
             "module": "fare",
@@ -95,6 +97,7 @@ def ensure_default_sources(session: Session, settings: Settings) -> list[Source]
             "base_url": "https://m.smzdm.com/theme/a788l7k/",
             "kind": "community",
             "language": "zh-Hans",
+            "country_code": None,
             "access_policy": "public_fetch",
             "allowed_fetch_mode": "httpx",
             "module": "fare",
@@ -105,10 +108,57 @@ def ensure_default_sources(session: Session, settings: Settings) -> list[Source]
             "base_url": "https://piao.tips/",
             "kind": "community",
             "language": "zh-Hans",
+            "country_code": None,
             "access_policy": "public_fetch",
             "allowed_fetch_mode": "httpx",
             "module": "fare",
             "notes": "错价/促销情报案例；主要用于风险验证",
+        },
+        # trip benefits — Japan default pack (public pages less robots-hostile)
+        {
+            "name": "Time Out Tokyo 优惠活动",
+            "base_url": "https://www.timeout.com/tokyo/things-to-do",
+            "kind": "community",
+            "language": "en",
+            "country_code": "JP",
+            "access_policy": "public_fetch",
+            "allowed_fetch_mode": "httpx",
+            "module": "trip",
+            "notes": "东京活动/优惠公开列表种子",
+        },
+        {
+            "name": "Japan Guide 东京",
+            "base_url": "https://www.japan-guide.com/e/e2164.html",
+            "kind": "official_page",
+            "language": "en",
+            "country_code": "JP",
+            "access_policy": "public_fetch",
+            "allowed_fetch_mode": "httpx",
+            "module": "trip",
+            "notes": "日本指南公开页；JP 行程来源包",
+        },
+        # raffle — public contest/giveaway style pages (read-only)
+        {
+            "name": "Sweepstakes Today 列表",
+            "base_url": "https://www.sweepstoday.com/",
+            "kind": "community",
+            "language": "en",
+            "country_code": None,
+            "access_policy": "public_fetch",
+            "allowed_fetch_mode": "httpx",
+            "module": "raffle",
+            "notes": "公开抽奖聚合页种子；仅候选线索，必须官网核实",
+        },
+        {
+            "name": "Contest Girl 列表",
+            "base_url": "https://www.contestgirl.com/",
+            "kind": "community",
+            "language": "en",
+            "country_code": None,
+            "access_policy": "public_fetch",
+            "allowed_fetch_mode": "httpx",
+            "module": "raffle",
+            "notes": "公开 sweepstakes 列表；不得视为官方已核实",
         },
     ]
     for item in defaults:
@@ -121,7 +171,8 @@ def ensure_default_sources(session: Session, settings: Settings) -> list[Source]
                 name=item["name"],
                 base_url=item["base_url"],
                 kind=item["kind"],
-                language=item["language"],
+                language=item.get("language"),
+                country_code=item.get("country_code"),
                 access_policy=item["access_policy"],
                 allowed_fetch_mode=item["allowed_fetch_mode"],
                 module=item["module"],

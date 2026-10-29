@@ -40,7 +40,10 @@ def system_status(session: Session) -> dict:
     dry = sum(1 for t in tasks_24h if t.dry_run)
 
     last_exec = session.scalar(
-        select(func.max(TaskRun.finished_at)).where(TaskRun.dry_run == False)  # noqa: E712
+        select(func.max(TaskRun.finished_at)).where(
+            TaskRun.dry_run == False,  # noqa: E712
+            TaskRun.status == "completed",
+        )
     )
     last_exec_aware = ensure_aware_utc(last_exec) if last_exec else None
 

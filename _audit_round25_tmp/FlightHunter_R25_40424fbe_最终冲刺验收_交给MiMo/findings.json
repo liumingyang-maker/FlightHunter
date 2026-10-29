@@ -1,0 +1,94 @@
+{
+  "schema": "flighthunter.audit.v1",
+  "audit_head": "40424fbe6c1cfb28898adb72100d6339837a9789",
+  "audit_base": "f7bd865fae93baa3a9c80ad6a50dc76969f68dd0",
+  "decision": "partial_core_runnable_not_full_v1",
+  "tests": {
+    "developer_pytest": "166 passed, exit 0",
+    "independent_pytest": "166 passed using import-only feedparser shim; real RSS not tested",
+    "ruff": "developer exit 0; no independent ruff binary",
+    "doctor": "independent exit 0",
+    "real_chromium": "developer_claim_unverifiable_in_uploaded_zip",
+    "real_sources": "developer_claim_unverifiable_in_uploaded_zip"
+  },
+  "mainline_recommendations": [
+    {
+      "id": "MAIN-01",
+      "title": "official giveaway source -> round -> rule evidence -> eligibility -> entry center",
+      "status": "missing_end_to_end",
+      "proof": "evidence/probes.log",
+      "priority": "product_mainline"
+    },
+    {
+      "id": "MAIN-02",
+      "title": "trip benefits real/default source pack -> JP trip -> match -> guide/wallet",
+      "status": "missing_default_source",
+      "proof": "evidence/trip_probe.log",
+      "priority": "product_mainline"
+    },
+    {
+      "id": "MAIN-03",
+      "title": "Windows 24h unattended run + real fetch + notifications + browser demo reproducible evidence",
+      "status": "missing_auditable_evidence",
+      "proof": "review.md",
+      "priority": "product_mainline"
+    }
+  ],
+  "findings": [
+    {
+      "id": "R25-MAIN-01",
+      "severity": "P1",
+      "impact": "global raffle opportunity discovery incomplete",
+      "status": "reproduced_offline",
+      "file": "app/services/discovery/service.py",
+      "evidence": "evidence/probes.log",
+      "disposition": "merge_into_next_raffle_engine_milestone"
+    },
+    {
+      "id": "R25-MAIN-02",
+      "severity": "P1",
+      "impact": "no trip sources included by default; Japanese benefits scan blocked",
+      "status": "reproduced_offline",
+      "file": "app/db/session.py",
+      "evidence": "evidence/trip_probe.log",
+      "disposition": "merge_into_next_benefit_engine_milestone"
+    },
+    {
+      "id": "R25-OPS-01",
+      "severity": "P1",
+      "impact": "last_successful_execute_scan_utc reports failed scan as successful",
+      "status": "reproduced_offline",
+      "file": "app/services/ops/status.py",
+      "evidence": "evidence/probes.log",
+      "disposition": "fix_with_worker_observability_milestone"
+    },
+    {
+      "id": "R25-SEC-01",
+      "severity": "P0_before_untrusted_unattended_scraping",
+      "impact": "DNS rebind/TOCTOU between preflight DNS check and httpx connection",
+      "status": "static_risk_not_exploited",
+      "file": "app/adapters/html_fetcher.py",
+      "evidence": "review.md",
+      "disposition": "isolate_until_safe_connection_strategy"
+    },
+    {
+      "id": "R25-DOC-01",
+      "severity": "P2",
+      "impact": "final report HEAD stale and placeholder ZIP_PATH",
+      "status": "confirmed",
+      "file": "docs/FINAL_REPORT.md",
+      "evidence": "review.md",
+      "disposition": "fix_with_next_final_report"
+    },
+    {
+      "id": "R25-EVID-01",
+      "severity": "P1",
+      "impact": "missing raw independent live-scrape/Chromium/WIn worker evidence; developer claim only",
+      "status": "not_verified",
+      "file": "docs/FINAL_REPORT.md",
+      "evidence": "review.md",
+      "disposition": "add_to_single_final_acceptance_package"
+    }
+  ],
+  "collaboration": "independent_suggestions_not_commands; do_not_stop_for_minor_issues; retain_partial_and_blocked"
+}

@@ -13,7 +13,7 @@ from app.adapters.html_fetcher import HttpxFetchAdapter
 from app.adapters.rss import RssAdapter
 from app.config import Settings
 from app.core.errors import ErrorCode
-from app.core.ids import content_hash_of_html, new_id
+from app.core.ids import content_hash_of_html, new_id, sha256_text
 from app.core.timeutils import utc_now
 from app.models import (
     BenefitOffer,
@@ -224,6 +224,77 @@ def materialize_trip_offer(
     return offer
 
 
+def materialize_raffle_candidates(
+    session: Session,
+    source: Source,
+    parsed: list,
+    *,
+    candidate_url: str | None = None,
+    limit: int = 15,
+) -> int:
+    """抽奖模块：把线索落成 Campaign/Candidate Round（candidate，不 verified）。"""
+    from app.models import Campaign, CampaignRound, Organizer
+
+    created = 0
+    now = utc_now()
+    for s in parsed[:limit]:
+        title = (s.title or "").strip()[:200]
+        if not title:
+            continue
+        # 去重：同标题同源
+        existing = session.scalar(
+            select(CampaignRound).where(
+                CampaignRound.official_url == (s.url or candidate_url),
+                CampaignRound.title == title,
+            )
+        )
+        if existing:
+            continue
+        org = session.scalar(select(Organizer).where(Organizer.name == source.name))
+        if org is None:
+            org = Organizer(
+                id=new_id(),
+                name=source.name[:180],
+                website_url=source.base_url,
+                trust_notes="自动发现线索主办方占位；须官网核实",
+            )
+            session.add(org)
+            session.flush()
+        key = sha256_text(f"{source.id}:{title}:{s.url}")[:32]
+        camp = session.scalar(
+            select(Campaign).where(Campaign.program_key == key)
+        )
+        if camp is None:
+            camp = Campaign(
+                id=new_id(),
+                organizer_id=org.id,
+                program_key=key,
+                name=title[:200],
+                category="flight_giveaway",
+                legacy_seed=False,
+            )
+            session.add(camp)
+            session.flush()
+        round_ = CampaignRound(
+            id=new_id(),
+            campaign_id=camp.id,
+            edition_key="auto",
+            title=title,
+            organizer_name=org.name,
+            official_url=s.url or candidate_url or source.base_url,
+            prize_summary=s.raw_claim_text[:500] if s.raw_claim_text else None,
+            verify_status="candidate",
+            automation_policy="unknown",
+            frequency="unknown",
+            limit_scope="unknown",
+            demo_only=False,
+        )
+        session.add(round_)
+        created += 1
+    session.flush()
+    return created
+
+
 def match_and_alert_fare(session: Session, *, limit_watches: int = 20) -> dict[str, int]:
     """对启用中的 FareWatch 做匹配并生成提醒；站内+尝试本机外送。"""
     from app.services.fare.service import evaluate_alerts_for_match, match_watch_to_deals
@@ -313,6 +384,8 @@ async def fetch_source(
         effective_module = module if module != "all" else (source.module or "fare")
         if effective_module == "trip" and hasattr(adapter, "parse_trip"):
             parsed = adapter.parse_trip(result.text, url=parse_base)[:20]  # type: ignore[attr-defined]
+        elif effective_module == "raffle" and hasattr(adapter, "parse_raffle"):
+            parsed = adapter.parse_raffle(result.text, url=parse_base)[:20]  # type: ignore[attr-defined]
         else:
             parsed = adapter.parse(result.text, url=parse_base)[:20]
 
@@ -321,6 +394,7 @@ async def fetch_source(
         cand.module = effective_module
     signals_persisted = 0
     offers_persisted = 0
+    raffles_persisted = 0
     if persist_signals and parsed:
         if effective_module == "fare":
             sigs = materialize_fare_signals(
@@ -343,6 +417,10 @@ async def fetch_source(
             for p in parsed:
                 materialize_trip_offer(session, source, p, country_code=cc)
             offers_persisted = len(before)
+        elif effective_module == "raffle":
+            raffles_persisted = materialize_raffle_candidates(
+                session, source, parsed, candidate_url=cand.url if cand else None
+            )
 
     source.last_fetch_at = utc_now()
     session.flush()
@@ -368,6 +446,7 @@ async def fetch_source(
         "signal_preview_count": len(parsed),
         "signals_persisted": signals_persisted,
         "offers_persisted": offers_persisted,
+        "raffles_persisted": raffles_persisted,
         "signals": preview,
     }
 

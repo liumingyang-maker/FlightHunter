@@ -207,6 +207,19 @@ class HttpxFetchAdapter(SourceAdapter):
                 break
         return signals
 
+    def parse_raffle(self, text: str, *, url: str) -> list[ParsedSignal]:
+        soup = BeautifulSoup(text, "html.parser")
+        signals: list[ParsedSignal] = []
+        for a in soup.find_all("a", href=True)[:200]:
+            label = a.get_text(" ", strip=True)
+            href = urljoin(url, a["href"])
+            sig = parse_raffle_label(label, page_url=href)
+            if sig:
+                signals.append(sig)
+            if len(signals) >= 30:
+                break
+        return signals
+
     def parse_trip(self, text: str, *, url: str) -> list[ParsedSignal]:
         soup = BeautifulSoup(text, "html.parser")
         signals: list[ParsedSignal] = []
@@ -325,6 +338,33 @@ def parse_trip_label(label: str, *, page_url: str) -> ParsedSignal | None:
         currency="CNY" if price is not None else None,
         deal_types=["unclassified"],
         confidence="low",
+    )
+
+
+def parse_raffle_label(label: str, *, page_url: str) -> ParsedSignal | None:
+    """抽奖线索：giveaway/sweepstakes/enter to win 等。"""
+    if not label or len(label) < 8:
+        return None
+    low = label.lower()
+    keys = (
+        "giveaway",
+        "sweepstake",
+        "contest",
+        "enter to win",
+        "win a trip",
+        "win flights",
+        "抽奖",
+        "赠票",
+        "免费旅行",
+    )
+    if not any(k in low or k in label for k in keys):
+        return None
+    return ParsedSignal(
+        title=label[:200],
+        raw_claim_text=label,
+        url=page_url if page_url.startswith("http") else None,
+        confidence="low",
+        deal_types=["unclassified"],
     )
 
 
