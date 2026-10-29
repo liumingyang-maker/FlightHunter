@@ -5,11 +5,19 @@
 <p class="muted">资格为三态：符合 / 不符合 / 需核实。未找到限制 ≠ 明确不限。</p>
 {% if rounds %}
 <table>
-  <thead><tr><th>标题</th><th>主办方</th><th>核实状态</th><th>类型</th></tr></thead>
+  <thead><tr><th>标题</th><th>主办方</th><th>链接</th><th>核实状态</th><th>类型</th></tr></thead>
   <tbody>
     {% for r in rounds %}
     <tr>
-      <td><a href="{{ r.official_url }}" rel="noopener noreferrer" target="_blank">{{ r.title }}</a></td>
+      <td>{{ r.title }}</td>
+      <td>{{ r.organizer_name }}</td>
+      <td>
+        {% if r.official_url %}
+          <a href="{{ r.official_url }}" rel="noopener noreferrer" target="_blank">官方/来源</a>
+        {% else %}
+          <span class="muted" title="聚合线索，非官方报名地址">线索页（非官方）</span>
+        {% endif %}
+      </td>
       <td>{{ r.organizer_name }}</td>
       <td><span class="badge">{{ r.verify_status }}</span></td>
       <td>{% if r.demo_only %}<span class="badge warn">fixture</span>{% else %}真实{% endif %}</td>

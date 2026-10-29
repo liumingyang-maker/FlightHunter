@@ -287,7 +287,15 @@ def materialize_raffle_candidates(
             )
             session.add(camp)
             session.flush()
-        # official_url 仅在非聚合线索时写入；聚合 URL 存 notes
+        # 同 campaign 已有同 edition 的 round 则跳过（防 unique 冲突）
+        existing_round = session.scalar(
+            select(CampaignRound).where(
+                CampaignRound.campaign_id == camp.id,
+                CampaignRound.edition_key == "auto",
+            )
+        )
+        if existing_round:
+            continue
         is_aggregator = source.kind in ("community", "search_api")
         official = None if is_aggregator else (s.url or candidate_url or source.base_url)
         round_ = CampaignRound(

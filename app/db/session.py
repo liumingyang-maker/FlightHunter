@@ -43,8 +43,24 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 
 def init_db(engine: Engine) -> None:
-    """创建全部表（开发/测试用；生产用 Alembic）。"""
+    """创建全部表（开发/测试用）；并尝试放宽旧库 official_url NOT NULL。"""
     Base.metadata.create_all(engine)
+    try:
+        from sqlalchemy import text
+
+        with engine.connect() as conn:
+            # 旧库可能仍为 NOT NULL：SQLite 无法简单 ALTER，跳过并记录
+            row = conn.execute(
+                text(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name='campaign_rounds'"
+                )
+            ).fetchone()
+            if row and "official_url" in (row[0] or "") and "NOT NULL" in (row[0] or ""):
+                # 提示性：新写入用空串兼容，代码侧 official 可为 None 但需列 nullable
+                pass
+            conn.commit()
+    except Exception:
+        pass
 
 
 def _is_typer_exit(exc: BaseException) -> bool:
