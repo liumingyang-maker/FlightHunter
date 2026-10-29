@@ -233,6 +233,7 @@ def execute_browser_entry(
             entity_id=attempt.id,
         )
         session.flush()
+        session.commit()
         return BrowserPipelineResult(
             attempt_id=attempt.id,
             status=attempt.status,

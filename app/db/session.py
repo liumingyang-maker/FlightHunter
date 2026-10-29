@@ -47,14 +47,28 @@ def init_db(engine: Engine) -> None:
     Base.metadata.create_all(engine)
 
 
+def _is_soft_exit(exc: BaseException) -> bool:
+    """typer/click Exit、SystemExit：业务已完成，应 commit 而非 rollback。"""
+    if isinstance(exc, (SystemExit, KeyboardInterrupt)):
+        return True
+    name = type(exc).__name__
+    return name == "Exit" or exc.__class__.__qualname__ == "Exit"
+
+
 @contextmanager
 def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:
     session = factory()
     try:
         yield session
         session.commit()
-    except Exception:
-        session.rollback()
+    except BaseException as exc:
+        if _is_soft_exit(exc):
+            try:
+                session.commit()
+            except Exception:
+                session.rollback()
+        else:
+            session.rollback()
         raise
     finally:
         session.close()

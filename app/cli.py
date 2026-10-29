@@ -437,26 +437,22 @@ def demo_browser_e2e(
             submit=submit,
             explicit_submit_consent=submit,
         )
-        console.print_json(
-            json.dumps(
-                {
-                    "attempt_id": result.attempt_id,
-                    "status": result.status,
-                    "receipt_code": result.receipt_code,
-                    "browser_ok": result.browser_ok,
-                    "message": result.message,
-                    "requires_human": result.requires_human,
-                },
-                ensure_ascii=False,
-            )
-        )
-        # 可机器判定：confirmed 才 exit 0；unknown/failed 非零
-        if result.status == "confirmed" and result.browser_ok:
-            engine.dispose()
-            raise typer.Exit(0)
-        console.print("[yellow]演示未达成 confirmed（unknown/failed/未提交）[/yellow]")
-        engine.dispose()
-        raise typer.Exit(2)
+        payload = {
+            "attempt_id": result.attempt_id,
+            "status": result.status,
+            "receipt_code": result.receipt_code,
+            "browser_ok": result.browser_ok,
+            "message": result.message,
+            "requires_human": result.requires_human,
+        }
+        # 在 with 内 commit，避免 typer.Exit 触发回滚
+        session.commit()
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+    engine.dispose()
+    if payload["status"] == "confirmed" and payload["browser_ok"]:
+        raise typer.Exit(0)
+    console.print("[yellow]演示未达成 confirmed（unknown/failed/未提交）[/yellow]")
+    raise typer.Exit(2)
 
 
 @app.command("list-deals")
