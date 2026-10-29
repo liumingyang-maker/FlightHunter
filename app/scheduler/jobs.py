@@ -1,4 +1,9 @@
-"""后台调度：Trip 扫描接入真实 run_discovery（可恢复、幂等）。"""
+"""后台调度：可恢复到期扫描，接入真实发现。
+
+- dry-run 与 execute 幂等键分离；dry-run 不推进正式 next_run_at
+- 先过滤到期再 limit，避免未到期挤占有期任务
+- benefit 订阅按 source_group 传给发现（目的国）
+"""
 
 from __future__ import annotations
 
@@ -21,19 +26,21 @@ def claim_due_subscriptions(
     session: Session,
     *,
     now=None,
-    limit: int = 20,
+    limit: int = 50,
 ) -> list[TripScanSubscription]:
+    """先在 SQL 层筛启用且到期，再 limit。"""
     now = ensure_aware_utc(now) or utc_now()
-    due = session.scalars(
+    # 取候选后在 Python 过滤到期（SQLite DateTime 比较需 aware）
+    candidates = session.scalars(
         select(TripScanSubscription)
         .where(
             TripScanSubscription.enabled == True,  # noqa: E712
             TripScanSubscription.paused_reason.is_(None),
         )
-        .limit(limit)
+        .limit(200)
     ).all()
     ready: list[TripScanSubscription] = []
-    for sub in due:
+    for sub in candidates:
         if sub.next_run_at and dt_gt(ensure_aware_utc(sub.next_run_at), now):
             continue
         trip = session.get(Trip, sub.trip_id)
@@ -43,6 +50,8 @@ def claim_due_subscriptions(
             sub.paused_reason = "trip_completed"
             continue
         ready.append(sub)
+        if len(ready) >= limit:
+            break
     return ready
 
 
@@ -54,6 +63,11 @@ async def _discovery_for_task(
     dry_run: bool,
 ) -> dict:
     module = "trip" if sub.task_type == "benefit_discovery" else "fare"
+    # source_group 若形如 JP / JP_national，取前 2 位作国家码
+    country = None
+    sg = (sub.source_group or "").strip()
+    if len(sg) >= 2 and sg[:2].isalpha():
+        country = sg[:2].upper()
     results = await run_discovery(
         session,
         settings,
@@ -62,6 +76,7 @@ async def _discovery_for_task(
         limit=5,
         persist_signals=not dry_run,
         after_fetch=not dry_run,
+        country_code=country,
     )
     ok = sum(1 for r in results if r.get("status") == "ok")
     failed = sum(1 for r in results if r.get("status") in ("failed", "denied", "manual_only"))
@@ -76,6 +91,7 @@ async def _discovery_for_task(
     return {
         "action": "discovery_scan",
         "module": module,
+        "country_code": country,
         "status": status,
         "ok": ok,
         "failed": failed,
@@ -95,9 +111,9 @@ def run_subscription_scan(
     dry_run: bool = True,
     fetch_fn: Callable[[TripScanSubscription], dict] | None = None,
 ) -> TaskRun:
-    """执行一次扫描。默认调用真实 run_discovery；fetch_fn 可覆盖。"""
     now = utc_now()
-    idem = idempotency_key("trip_scan", sub.id, sub.task_type, now.strftime("%Y-%m-%dT%H"))
+    mode = "dry" if dry_run else "exec"
+    idem = idempotency_key("trip_scan", sub.id, sub.task_type, mode, now.strftime("%Y-%m-%dT%H"))
     existing = session.scalar(select(TaskRun).where(TaskRun.idempotency_key == idem))
     if existing and existing.status in ("running", "completed", "blocked", "partial"):
         return existing
@@ -120,20 +136,22 @@ def run_subscription_scan(
         if fetch_fn is not None:
             result = fetch_fn(sub)
             run.status = result.get("status", "completed")
-            success = run.status == "completed"
+            success = (not dry_run) and run.status in ("completed", "partial")
         else:
             result = asyncio.run(_discovery_for_task(session, settings, sub, dry_run=dry_run))
             run.status = result["status"]
-            success = run.status in ("completed", "partial") and not dry_run
+            success = (not dry_run) and run.status in ("completed", "partial")
 
         run.result_summary = json.dumps(result, ensure_ascii=False, default=str)[:4000]
         run.finished_at = utc_now()
         sub.last_run_at = run.finished_at
         sub.last_status = run.status
         sub.last_message = result.get("message")
-        sub.next_run_at = run.finished_at + timedelta(hours=max(1, sub.interval_hours))
+        # dry-run 不推进正式调度时间，避免污染 execute
+        if not dry_run:
+            sub.next_run_at = run.finished_at + timedelta(hours=max(1, sub.interval_hours))
         if trip:
-            if success and not dry_run:
+            if success:
                 if sub.task_type == "benefit_discovery":
                     trip.last_benefit_scan_at = run.finished_at
                 elif sub.task_type == "fare_monitor":
@@ -153,7 +171,8 @@ def run_subscription_scan(
         run.finished_at = utc_now()
         sub.last_status = "failed"
         sub.last_message = str(exc)
-        sub.next_run_at = run.finished_at + timedelta(hours=max(1, sub.interval_hours))
+        if not dry_run:
+            sub.next_run_at = run.finished_at + timedelta(hours=max(1, sub.interval_hours))
         if trip:
             trip.scan_status = "interrupted"
             trip.scan_message = str(exc)

@@ -198,9 +198,9 @@ def materialize_trip_offer(
     if "min_spend=" in (parsed.raw_claim_text or ""):
         import re
 
-        m = re.search(r"min_spend=(\d+(?:\.\d+)?)", parsed.raw_claim_text)
+        m = re.search(r"min_spend=([\d,]+(?:\.\d+)?)", parsed.raw_claim_text)
         if m:
-            conditions["minimum_spend"] = float(m.group(1))
+            conditions["minimum_spend"] = float(m.group(1).replace(",", ""))
     offer = BenefitOffer(
         id=new_id(),
         organizer_name=source.name,
@@ -361,12 +361,16 @@ async def run_discovery(
     limit: int = 10,
     persist_signals: bool = True,
     after_fetch: bool = True,
+    country_code: str | None = None,
 ) -> list[dict[str, Any]]:
-    """status+module 过滤 → 按 last_fetch_at 公平轮询 → 抓取 → 可选入库与匹配。"""
+    """status+module(+可选国家) 过滤 → last_fetch_at 轮询 → 抓取 → 可选入库匹配。"""
     stmt = select(Source).where(Source.status == "active")
     if module != "all":
         stmt = stmt.where(Source.module.in_((module, "shared")))
-    # 未抓过的优先，其次最久未抓
+    if country_code:
+        cc = country_code.upper()
+        # 优先该国来源；无国家标注的共享源保留
+        stmt = stmt.where((Source.country_code == cc) | (Source.country_code.is_(None)))
     stmt = stmt.order_by(Source.last_fetch_at.is_(None).desc(), Source.last_fetch_at, Source.name)
     stmt = stmt.limit(limit)
     sources = list(session.scalars(stmt).all())
@@ -380,6 +384,7 @@ async def run_discovery(
                 module=module,
                 dry_run=dry_run,
                 persist_signals=persist_signals,
+                country_code=country_code or s.country_code,
             )
         )
     session.flush()

@@ -302,6 +302,33 @@ def list_trips(config: str | None = typer.Option(None, "--config")) -> None:
     engine.dispose()
 
 
+@app.command("scan-due")
+def scan_due(
+    execute: bool = typer.Option(False, "--execute", help="真实执行发现（默认 dry-run）"),
+    config: str | None = typer.Option(None, "--config"),
+    limit: int = typer.Option(10, "--limit"),
+) -> None:
+    """执行到期的行程扫描订阅。--execute 才访问网络来源。"""
+    settings = load_settings(config, project_root=_project_root())
+    from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
+    from app.scheduler.jobs import run_due_scans
+
+    engine = create_db_engine(settings)
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        runs = run_due_scans(session, settings, dry_run=not execute, limit=limit)
+        table = Table(title="到期扫描结果")
+        table.add_column("任务")
+        table.add_column("状态")
+        table.add_column("dry")
+        for r in runs:
+            table.add_row(r.task_type, r.status, "Y" if r.dry_run else "N")
+        console.print(table)
+        console.print(f"[green]完成 {len(runs)} 个订阅扫描[/green]")
+    engine.dispose()
+
+
 @app.command("list-deals")
 def list_deals(
     risk: str | None = typer.Option(None, "--risk"),

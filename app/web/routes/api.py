@@ -534,3 +534,24 @@ def scheduler_run_dry(db: DbDep, settings: SettingsDep, limit: int = Query(10, l
             for r in runs
         ]
     )
+
+
+@router.post("/scheduler/run-due")
+def scheduler_run_due(db: DbDep, settings: SettingsDep, limit: int = Query(10, le=50)):
+    """真实执行到期扫描（仍遵守来源策略与 dry/execute 幂等分离）。"""
+    from app.scheduler.jobs import run_due_scans
+
+    runs = run_due_scans(db, settings, dry_run=False, limit=limit)  # type: ignore[arg-type]
+    db.commit()
+    return _ok(
+        [
+            {
+                "id": r.id,
+                "task_type": r.task_type,
+                "status": r.status,
+                "dry_run": r.dry_run,
+                "result_summary": r.result_summary,
+            }
+            for r in runs
+        ]
+    )

@@ -230,6 +230,8 @@ _TRIP_KW = (
     "折扣",
     "优惠",
     "满减",
+    "满",
+    "减",
     "免费",
     "祭典",
     "活动",
@@ -305,7 +307,7 @@ def parse_trip_label(label: str, *, page_url: str) -> ParsedSignal | None:
     if m_spent:
         try:
             price = float(m_spent.group(2).replace(",", ""))
-            conditions_note = f"min_spend={m_spent.group(1)}"
+            conditions_note = f"min_spend={m_spent.group(1).replace(',', '')}"
         except ValueError:
             price = None
     else:
