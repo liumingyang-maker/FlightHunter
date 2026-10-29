@@ -94,9 +94,9 @@ def test_rss_fare_filters_news(monkeypatch):
 
     monkeypatch.setattr("app.adapters.rss.feedparser.parse", lambda t: Feed())
     from app.adapters.rss import RssAdapter
-    from app.config import Settings as S
+    from app.config import Settings
 
-    items = RssAdapter(S()).parse("<feed/>", url="https://example.org/rss")
+    items = RssAdapter(Settings()).parse("<feed/>", url="https://example.org/rss")
     assert all("美股" not in s.title for s in items)
     assert any("999" in (s.raw_claim_text or "") or s.reported_total for s in items)
 
