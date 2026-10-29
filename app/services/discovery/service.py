@@ -145,11 +145,12 @@ async def run_discovery(
     dry_run: bool = True,
     limit: int = 10,
 ) -> list[dict[str, Any]]:
-    # 仅 active：manual_only 不进入自动发现队列
-    stmt = select(Source).where(Source.status == "active").limit(limit)
-    sources = list(session.scalars(stmt).all())
+    """先按 status + 模块过滤，再 limit（避免 fare 被 trip 来源挤出）。"""
+    stmt = select(Source).where(Source.status == "active")
     if module != "all":
-        sources = [s for s in sources if s.module in (module, "shared")]
+        stmt = stmt.where(Source.module.in_((module, "shared")))
+    stmt = stmt.order_by(Source.name).limit(limit)
+    sources = list(session.scalars(stmt).all())
     out = []
     for s in sources:
         out.append(await fetch_source(session, settings, s, module=module, dry_run=dry_run))

@@ -109,7 +109,7 @@ def _has_rules_body(html: str) -> bool:
         a.extract()
     text = soup.get_text(" ", strip=True)
     if re.search(
-        r"(eligibility\s*[:：]\s*(tbd|tbc|待定|coming\s*soon)|"
+        r"(eligib(?:le|ility)\s*[:：]\s*(tbd|tbc|待定|to be determined|coming\s*soon)|"
         r"rules\s*[:：]\s*(tbd|tbc|待定))",
         text,
         re.I,
@@ -122,11 +122,11 @@ def _has_rules_body(html: str) -> bool:
             re.I,
         )
     )
-    # 资格：不能只是 TBD，需有实质描述
     has_eligibility = bool(
         re.search(
-            r"(eligib(?:le|ility)\s+(?:applies|open|is|are|must|shall|must be)|"
-            r"eligib(?:le|ility)\s*[:：]\s*(?!tbd|tbc|待定|coming)\S|"
+            r"(eligib(?:le|ility)\s+(?:applies|open|is|are|must|shall)|"
+            r"eligible participants must|"
+            r"eligib(?:le|ility)\s*[:：]\s*(?!tbd|tbc|待定|to be determined|coming)\S|"
             r"参赛资格[^。]{0,40}|"
             r"open to (residents|residing|entrants|legal))",
             text,
