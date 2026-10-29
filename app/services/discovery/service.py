@@ -194,6 +194,13 @@ def materialize_trip_offer(
     )
     if existing:
         return existing
+    conditions = {"raw_claim": parsed.raw_claim_text[:500]}
+    if "min_spend=" in (parsed.raw_claim_text or ""):
+        import re
+
+        m = re.search(r"min_spend=(\d+(?:\.\d+)?)", parsed.raw_claim_text)
+        if m:
+            conditions["minimum_spend"] = float(m.group(1))
     offer = BenefitOffer(
         id=new_id(),
         organizer_name=source.name,
@@ -203,7 +210,7 @@ def materialize_trip_offer(
         official_url=None,
         country_codes=json.dumps([country_code.upper()] if country_code else []),
         date_certainty="unconfirmed",
-        conditions=json.dumps({"raw_claim": parsed.raw_claim_text[:500]}),
+        conditions=json.dumps(conditions, ensure_ascii=False),
         face_value_min=parsed.reported_total,
         face_value_max=parsed.reported_total,
         face_value_currency=parsed.currency,
