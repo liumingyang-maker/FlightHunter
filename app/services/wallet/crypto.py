@@ -1,14 +1,13 @@
 """本地卡包密钥与敏感字段加密。
 
 Windows：优先 DPAPI（CryptProtectData）。
-其它平台/测试：data/wallet.key + scrypt + XOR-HMAC 流（仅本机演示级，日志脱敏）。
+其它环境：AES-GCM（cryptography）+ 独立密钥文件；无安全实现时 fail-closed。
+禁止使用重复密钥流 XOR。
 """
 
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
 import os
 import secrets
 from pathlib import Path
@@ -34,23 +33,24 @@ def _load_or_create_key(settings: Settings) -> bytes:
     return key
 
 
-def _scrypt(key: bytes, salt: bytes, n: int = 2**14) -> bytes:
-    return hashlib.scrypt(key, salt=salt, n=n, r=8, p=1, dklen=32)
-
-
 def encrypt_secret(settings: Settings, plaintext: str) -> str:
-    """返回 v1:base64(salt|mac|cipher)。"""
+    """返回 dpapi:... 或 aesgcm:...；无安全后端则抛错。"""
     if os.name == "nt":
         protected = _dpapi_protect(plaintext.encode("utf-8"))
         if protected is not None:
             return "dpapi:" + base64.b64encode(protected).decode("ascii")
+    # AES-GCM 回退
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    except ImportError as exc:
+        raise RuntimeError(
+            "无安全加密后端：Windows DPAPI 不可用且未安装 cryptography；拒绝加密真实凭据"
+        ) from exc
     key = _load_or_create_key(settings)
-    salt = secrets.token_bytes(16)
-    stream = _scrypt(key, salt)
-    data = plaintext.encode("utf-8")
-    cipher = bytes(a ^ b for a, b in zip(data, stream * ((len(data) // 32) + 1), strict=False))
-    mac = hmac.new(key, salt + cipher, hashlib.sha256).digest()
-    return "v1:" + base64.b64encode(salt + mac + cipher).decode("ascii")
+    nonce = secrets.token_bytes(12)
+    aes = AESGCM(key)
+    ct = aes.encrypt(nonce, plaintext.encode("utf-8"), None)
+    return "aesgcm:" + base64.b64encode(nonce + ct).decode("ascii")
 
 
 def decrypt_secret(settings: Settings, token: str) -> str:
@@ -60,17 +60,17 @@ def decrypt_secret(settings: Settings, token: str) -> str:
         if out is None:
             raise ValueError("DPAPI 解密失败")
         return out.decode("utf-8")
-    if not token.startswith("v1:"):
-        raise ValueError("未知密文格式")
-    raw = base64.b64decode(token[3:])
-    salt, mac, cipher = raw[:16], raw[16:48], raw[48:]
-    key = _load_or_create_key(settings)
-    expect = hmac.new(key, salt + cipher, hashlib.sha256).digest()
-    if not hmac.compare_digest(mac, expect):
-        raise ValueError("MAC 校验失败")
-    stream = _scrypt(key, salt)
-    data = bytes(a ^ b for a, b in zip(cipher, stream * ((len(cipher) // 32) + 1), strict=False))
-    return data.decode("utf-8")
+    if token.startswith("aesgcm:"):
+        try:
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        except ImportError as exc:
+            raise RuntimeError("缺少 cryptography，无法解密 AES-GCM 密文") from exc
+        raw = base64.b64decode(token[7:])
+        nonce, ct = raw[:12], raw[12:]
+        key = _load_or_create_key(settings)
+        pt = AESGCM(key).decrypt(nonce, ct, None)
+        return pt.decode("utf-8")
+    raise ValueError("未知密文格式（拒绝不安全旧格式）")
 
 
 def _dpapi_protect(data: bytes) -> bytes | None:
@@ -115,4 +115,3 @@ def _dpapi_unprotect(data: bytes) -> bytes | None:
         return out
     except Exception:
         return None
-

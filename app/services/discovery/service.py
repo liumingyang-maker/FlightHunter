@@ -252,7 +252,7 @@ def match_and_alert_fare(session: Session, *, limit_watches: int = 20) -> dict[s
                         entity_type="fare_alert",
                         entity_id=alert.id,
                     )
-                    if n and n.body and "delivered" in (n.body or ""):
+                    if n and "toast_delivered" in (n.body or ""):
                         alert.delivery_status = "delivered"
                     elif n:
                         alert.delivery_status = "recorded"
