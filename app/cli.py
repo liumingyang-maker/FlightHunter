@@ -177,11 +177,21 @@ def discover(
         )
         ok = sum(1 for r in results if r.get("status") == "ok")
         failed = sum(1 for r in results if r.get("status") in ("failed", "denied", "manual_only"))
-        run_status = "completed"
-        if results and ok == 0 and failed > 0:
-            run_status = "failed"
-        elif ok and failed:
+        persisted = sum(
+            int(r.get("signals_persisted") or 0)
+            + int(r.get("offers_persisted") or 0)
+            + int(r.get("raffles_persisted") or 0)
+            for r in results
+            if isinstance(r, dict)
+        )
+        if dry_run:
+            run_status = "skipped"
+        elif not results or ok == 0:
+            run_status = "blocked"
+        elif (ok == 0 and persisted == 0 and failed) or failed:
             run_status = "partial"
+        else:
+            run_status = "completed"
         session.add(
             TaskRun(
                 id=new_id(),

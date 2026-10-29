@@ -129,13 +129,13 @@ def ensure_default_sources(session: Session, settings: Settings) -> list[Source]
         {
             "name": "Japan Guide 东京",
             "base_url": "https://www.japan-guide.com/e/e2164.html",
-            "kind": "official_page",
+            "kind": "community",  # 独立旅游指南 ≠ 官方优惠来源
             "language": "en",
             "country_code": "JP",
             "access_policy": "public_fetch",
             "allowed_fetch_mode": "httpx",
             "module": "trip",
-            "notes": "日本指南公开页；JP 行程来源包",
+            "notes": "公开指南线索；非官方优惠，不可当已领券",
         },
         # raffle — public contest/giveaway style pages (read-only)
         {

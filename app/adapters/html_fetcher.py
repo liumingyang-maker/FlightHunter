@@ -342,7 +342,7 @@ def parse_trip_label(label: str, *, page_url: str) -> ParsedSignal | None:
 
 
 def parse_raffle_label(label: str, *, page_url: str) -> ParsedSignal | None:
-    """抽奖线索：giveaway/sweepstakes/enter to win 等。"""
+    """抽奖线索：giveaway/sweepstakes 等；并粗分奖品类别标签进 deal_types。"""
     if not label or len(label) < 8:
         return None
     low = label.lower()
@@ -352,19 +352,42 @@ def parse_raffle_label(label: str, *, page_url: str) -> ParsedSignal | None:
         "contest",
         "enter to win",
         "win a trip",
+        "win a free trip",
         "win flights",
+        "free trip",
+        "vacation package",
         "抽奖",
         "赠票",
         "免费旅行",
     )
     if not any(k in low or k in label for k in keys):
         return None
+    types = ["unclassified"]
+    travel_kw = (
+        "trip",
+        "flight",
+        "vacation",
+        "travel",
+        "hotel",
+        "cruise",
+        "flight",
+        "机票",
+        "旅行",
+        "酒店",
+        "度假",
+        "游轮",
+    )
+    if any(k in low or k in label for k in travel_kw):
+        types = ["flight_giveaway"]
+    else:
+        # 非旅行奖品：手机/厨具等
+        types = ["prize_other"]
     return ParsedSignal(
         title=label[:200],
         raw_claim_text=label,
         url=page_url if page_url.startswith("http") else None,
         confidence="low",
-        deal_types=["unclassified"],
+        deal_types=types,
     )
 
 

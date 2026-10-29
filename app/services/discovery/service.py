@@ -240,7 +240,6 @@ def materialize_raffle_candidates(
         title = (s.title or "").strip()[:200]
         if not title:
             continue
-        # 去重：同标题同源
         existing = session.scalar(
             select(CampaignRound).where(
                 CampaignRound.official_url == (s.url or candidate_url),
@@ -249,31 +248,45 @@ def materialize_raffle_candidates(
         )
         if existing:
             continue
-        org = session.scalar(select(Organizer).where(Organizer.name == source.name))
+        # 聚合站 ≠ 主办方：Organizer 仅作线索占位，无 official_domain
+        org_name = f"聚合线索 · {source.name}"[:180]
+        org = session.scalar(select(Organizer).where(Organizer.name == org_name))
         if org is None:
             org = Organizer(
                 id=new_id(),
-                name=source.name[:180],
+                name=org_name,
                 website_url=source.base_url,
-                trust_notes="自动发现线索主办方占位；须官网核实",
+                official_domain=None,
+                trust_notes="聚合平台线索，非确认主办方；须到官方站核实",
             )
             session.add(org)
-            session.flush()
+            org_created = True
+        else:
+            org_created = False
+            if org.official_domain:
+                # 不覆盖已有真实主办方域
+                pass
+        session.flush()
         key = sha256_text(f"{source.id}:{title}:{s.url}")[:32]
-        camp = session.scalar(
-            select(Campaign).where(Campaign.program_key == key)
-        )
+        camp = session.scalar(select(Campaign).where(Campaign.program_key == key))
         if camp is None:
+            subtypes = list(s.deal_types or ["unclassified"])
+            category = (
+                "flight_giveaway"
+                if "flight_giveaway" in subtypes
+                else "other_giveaway"
+            )
             camp = Campaign(
                 id=new_id(),
                 organizer_id=org.id,
                 program_key=key,
                 name=title[:200],
-                category="flight_giveaway",
+                category=category,
                 legacy_seed=False,
             )
             session.add(camp)
             session.flush()
+        # official_url 字段语义：此处是聚合页链接，仍写入但 verify_status=candidate
         round_ = CampaignRound(
             id=new_id(),
             campaign_id=camp.id,
@@ -287,7 +300,27 @@ def materialize_raffle_candidates(
             frequency="unknown",
             limit_scope="unknown",
             demo_only=False,
+            tags=json.dumps(
+                {
+                    "source_kind": source.kind,
+                    "aggregator": True,
+                    "prize_types": list(s.deal_types or []),
+                },
+                ensure_ascii=False,
+            )
+            if hasattr(CampaignRound, "tags")
+            else "[]",
         )
+        # CampaignRound 用 tags 字段（Text）
+        if hasattr(round_, "tags"):
+            round_.tags = json.dumps(
+                {
+                    "source_kind": source.kind,
+                    "aggregator": True,
+                    "prize_types": list(s.deal_types or []),
+                },
+                ensure_ascii=False,
+            )
         session.add(round_)
         created += 1
     session.flush()
