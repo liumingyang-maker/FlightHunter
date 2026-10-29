@@ -314,8 +314,13 @@ git grep -n "assert_public_http_url\|ensure_aware_utc\|_is_trusted_quote" -- app
 | FH-R3-P1-01 event/ redeem 冲突 | **采纳** | 购物券 6 月使用/5 月活动被 usable | shopping 类仅 redeem 可 confirmed |
 | FH-R3-P1-03 robots 默认放行 | **采纳** | 403/异常应 fail-closed | 非 200 → 拒绝抓取 |
 | FH-R3-P2-03 白名单 load_settings | **部分采纳** | 注入 settings 参数已支持 | 运行时默认仍 load_settings，CLI 可后续统一注入 |
-| 立刻合 main / 实网无人值守 | **不采纳** | I5/I10 等仍 partial；设计包禁止 | 继续 develop |
-| FH-R3-P1-05 Playwright 闭环 | **暂缓（如实 partial）** | 依赖本地模拟站与授权，非本轮 P0 能关 | 保持 partial/blocked，不标 done |
+| FH-R4-P0-01 重定向 DNS | **采纳** | 每跳 resolve_and_assert_public_host，私网目标不发请求 |
+| FH-R4-P1-01 报价日期窗 | **采纳** | depart_date 必须落在 watch.depart_window；否则 QUOTE_OUTSIDE_WATCH_WINDOW |
+| FH-R4-P1-02 城市停留日 | **采纳** | 活动/使用窗须与该城 TripSegment 相交；CITY_STAY_DATES_MISMATCH |
+| FH-R4-P1-03 细则正文 | **采纳** | 仅链接文案不够；需页面细则正文或 rules_html |
+| FH-R4-P2-01 robots 404 分类 | **部分采纳** | 仍 fail-closed；分类策略待发现闭环再细化 |
+| FH-R4-P1-04 发现 E2E 闭环 | **暂缓为下一主任务** | 不冒充 done；继续 partial |
+| 合 main / 无人值守抓取 | **不采纳** | 安全与设计包边界 |
 
 实现方对 GPT 建议保留最终取舍权；分歧必须书面说明，不得静默忽略，也不得无理由全盘照搬。
 
