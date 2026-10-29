@@ -53,5 +53,5 @@ def test_ingest_success_stores_candidate(db, settings: Settings):
     cand = ingest_fetch_result(db, src, fr)
     db.commit()
     assert cand is not None
-    assert cand.status == "candidate"
+    assert cand.status == "parsed"
     assert cand.raw_content_hash == "abc"

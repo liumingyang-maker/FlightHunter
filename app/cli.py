@@ -129,65 +129,82 @@ def discover(
     config: str | None = typer.Option(None, "--config"),
     limit: int = typer.Option(5, "--limit", help="最多尝试的来源数"),
 ) -> None:
-    """发现任务：默认 dry-run，不访问真实站点。"""
+    """发现任务：dry-run 不联网；--execute 真实调用适配器并入库信号/匹配。"""
+    import asyncio
+
     settings = load_settings(config, project_root=_project_root())
     from app.core.ids import idempotency_key, new_id
     from app.core.timeutils import utc_now
     from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
-    from app.models import Source, TaskRun
+    from app.models import TaskRun
+    from app.services.discovery.service import run_discovery
 
     engine = create_db_engine(settings)
     init_db(engine)
     factory = make_session_factory(engine)
 
     with session_scope(factory) as session:
-        from sqlalchemy import select
-
-        sources = session.scalars(select(Source).where(Source.status == "active")).all()
-        if module != "all":
-            sources = [s for s in sources if s.module in (module, "shared")]
-        sources = sources[:limit]
-
         console.print(f"发现模式: {'DRY-RUN' if dry_run else 'EXECUTE'} · 模块: {module}")
-        table = Table(title="来源计划")
-        table.add_column("名称")
-        table.add_column("模块")
-        table.add_column("访问策略")
-        table.add_column("抓取方式")
-        table.add_column("计划")
-        for s in sources:
-            plan = "跳过（dry-run 仅登记）"
-            if not dry_run:
-                if s.access_policy == "forbidden" or s.allowed_fetch_mode == "none":
-                    plan = "拒绝：来源不允许自动抓取"
-                elif s.access_policy == "manual_only":
-                    plan = "人工粘贴入口"
-                else:
-                    plan = "排队 httpx（遵守限速/robots）"
-            table.add_row(s.name, s.module, s.access_policy, s.allowed_fetch_mode, plan)
+        results = asyncio.run(
+            run_discovery(
+                session,
+                settings,
+                module=module,
+                dry_run=dry_run,
+                limit=limit,
+                persist_signals=not dry_run,
+                after_fetch=not dry_run,
+            )
+        )
+        table = Table(title="发现结果")
+        table.add_column("来源/步骤")
+        table.add_column("状态")
+        table.add_column("详情")
+        for r in results:
+            sid = r.get("source_id") or "-"
+            detail = r.get("message") or ""
+            if r.get("signals_persisted") is not None:
+                detail += (
+                    f" | signals={r.get('signals_persisted')} offers={r.get('offers_persisted')}"
+                )
+            if r.get("status") == "post_match":
+                detail = f"matches={r.get('matches')} alerts={r.get('alerts')}"
+            table.add_row(str(sid)[:12], str(r.get("status")), detail)
         console.print(table)
 
-        for s in sources:
-            key = idempotency_key("discover", s.id, "dry" if dry_run else "exec")
-            run = TaskRun(
-                id=new_id(),
-                task_type="source_discovery",
-                status="skipped" if dry_run else "pending",
-                idempotency_key=key,
-                entity_type="source",
-                entity_id=s.id,
-                dry_run=dry_run,
-                message="dry-run：未访问外部网络"
-                if dry_run
-                else "已登记执行队列（适配器随后实现完整抓取）",
-                started_at=utc_now(),
-            )
-            session.add(run)
-        session.flush()
-        console.print(
-            f"[green]已登记 {len(sources)} 个来源任务"
-            f"{'（dry-run，无网络访问）' if dry_run else ''}[/green]"
+        key = idempotency_key(
+            "discover_batch", module, "dry" if dry_run else "exec", utc_now().strftime("%Y%m%d%H%M")
         )
+        session.add(
+            TaskRun(
+                id=new_id(),
+                task_type="source_discovery_batch",
+                status="completed",
+                idempotency_key=key,
+                dry_run=dry_run,
+                message=json.dumps(
+                    [
+                        {
+                            k: r.get(k)
+                            for k in (
+                                "source_id",
+                                "status",
+                                "signals_persisted",
+                                "offers_persisted",
+                            )
+                        }
+                        for r in results
+                    ],
+                    ensure_ascii=False,
+                    default=str,
+                )[:4000],
+                started_at=utc_now(),
+                finished_at=utc_now(),
+            )
+        )
+        session.flush()
+        ok = sum(1 for r in results if r.get("status") == "ok")
+        console.print(f"[green]完成：ok={ok} · 总步骤={len(results)}[/green]")
     engine.dispose()
 
 

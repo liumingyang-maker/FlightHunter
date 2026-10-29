@@ -32,6 +32,7 @@ class ParsedSignal:
     party_size: int | None = None
     origin_airport: str | None = None
     destination_airport: str | None = None
+    airline: str | None = None
     deal_types: list[str] = field(default_factory=list)
     published_at: datetime | None = None
     confidence: str = "low"
