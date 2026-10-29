@@ -1,0 +1,46 @@
+{
+  "package": "FlightHunter_主业务冲刺包_f7bd865f",
+  "version": "one-batch-mainline",
+  "files": {
+    "05_执行节奏与项目法则调整建议.md": {
+      "bytes": 1989,
+      "sha256": "6bdaf7daf6324a7876fd563b24b576c79b788e8c6e7c433e9ac0b633dd13e29c"
+    },
+    "04_最终报告模板.md": {
+      "bytes": 3683,
+      "sha256": "5a3453bcde29d1a94156306dee47709d4ddff57314471f2fbd2f6d96a6c3514d"
+    },
+    "01_一批完成_核心业务清单.md": {
+      "bytes": 12266,
+      "sha256": "71e5c46caf4fd78044224f25aba18ad09ad1136353acdf180c8524fb27964842"
+    },
+    "03_当前工程实际起点.md": {
+      "bytes": 3434,
+      "sha256": "c9266463500785b3c207ff54ac19dec8c7e0d39c14d14364a3c020943ebc8520"
+    },
+    "02_真实场景验收与禁止假完成.md": {
+      "bytes": 6979,
+      "sha256": "fabf06033d805d00b98f0eb42b3fec4f0d1b8948ec10d4b0044f6cabb0f9c4b1"
+    },
+    "tasks.machine.json": {
+      "bytes": 8755,
+      "sha256": "6fc8eea1098b600249084332d1717cf4bb001e1c673742ec30343a03a8b22423"
+    },
+    "00_先读_给MiMo.md": {
+      "bytes": 4354,
+      "sha256": "a8a02ea278433f1234f38ebe511bdda2924efb7f18788e0be3cb06dd82f4329e"
+    },
+    "reference/请先读_基线不是当前进度.md": {
+      "bytes": 484,
+      "sha256": "3d349f60025f15908f89ab9881072d79976072cfd7f66cfd2d4d9bf4e94bd3aa"
+    },
+    "reference/R3_原始验收_104项.md": {
+      "bytes": 18731,
+      "sha256": "c71a464ce4ce3be8b2e442215737c4cb166347cf3991f87e275322590008b841"
+    },
+    "reference/R3_原始需求追踪_114项.md": {
+      "bytes": 32398,
+      "sha256": "bc07b325b769e137b43ae474c917721a737a372327f6fa060cb60900de9deacd"
+    }
+  }
+}

@@ -166,7 +166,7 @@ class HttpxFetchAdapter(SourceAdapter):
                             message="响应体超过大小限制",
                             fetched_at=datetime.now(UTC),
                         )
-                    text = content.decode(resp.charset or "utf-8", errors="replace")
+                    text = content.decode("utf-8", errors="replace")
                     return FetchResult(
                         ok=True,
                         url=url,

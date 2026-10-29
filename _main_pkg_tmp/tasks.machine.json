@@ -1,0 +1,296 @@
+{
+  "name": "FlightHunter V1.0 mainline development batch",
+  "baseline": {
+    "source_snapshot_sha": "f7bd865fae93baa3a9c80ad6a50dc76969f68dd0",
+    "branch": "develop",
+    "freshness": "user-provided snapshot, not real-time GitHub confirmation"
+  },
+  "purpose": "三个目标一次完成，内部持续测试与提交，最后一次审核交接，避免反复小缺陷循环",
+  "product_scope": [
+    "giveaway_hunter",
+    "trip_benefits",
+    "airfare_radar"
+  ],
+  "work_mode": {
+    "releases": 1,
+    "internal_commits": true,
+    "continuous_tests": true,
+    "human_review_zip": "at_final_delivery_only",
+    "advice_not_orders": true,
+    "do_not_auto_merge_main": true
+  },
+  "completion_status_values": [
+    "done",
+    "partial",
+    "blocked",
+    "not_implemented"
+  ],
+  "proof_levels": {
+    "L0": "static_code",
+    "L1": "offline_test",
+    "L2": "real_local_E2E",
+    "L3": "real_public_read_only",
+    "L4": "authorized_external_action"
+  },
+  "safety_gates": [
+    "no_unauthorized_submit",
+    "no_payment_or_booking",
+    "unknown_no_auto_retry",
+    "ssrf_dns_redirect_guard",
+    "secrets_local_only",
+    "mock_not_real_success",
+    "source_truthfulness"
+  ],
+  "source_of_truth": [
+    "00_先读_给MiMo.md",
+    "01_一批完成_核心业务清单.md",
+    "02_真实场景验收与禁止假完成.md",
+    "reference/R3_原始需求追踪_114项.md",
+    "reference/R3_原始验收_104项.md"
+  ],
+  "tasks": [
+    {
+      "id": "MON-01",
+      "title": "Windows 后台启动与运行检查",
+      "goal": "GOAL-1",
+      "dependencies": [],
+      "acceptance": "开机/登录自动运行+停止卸载入口+真实任务记录",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "MON-02",
+      "title": "断线恢复与任务幂等",
+      "goal": "GOAL-1",
+      "dependencies": [
+        "MON-01"
+      ],
+      "acceptance": "后台多轮、断线重启、锁和 due 分页安全",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "MON-03",
+      "title": "抓取合规和 SSRF 网络保护",
+      "goal": "GOAL-1",
+      "dependencies": [],
+      "acceptance": "DNS/重定向私网拦截+robots/限流；真实联网前不可跳过",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "MON-04",
+      "title": "通知投递和健康仪表",
+      "goal": "GOAL-1",
+      "dependencies": [
+        "MON-02"
+      ],
+      "acceptance": "送达状态真值、UI 通知/失败重试/上次任务时间",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "SRC-01",
+      "title": "真实公开来源目录与发现适配器",
+      "goal": "GOAL-2",
+      "dependencies": [
+        "MON-03"
+      ],
+      "acceptance": "RSS/Atom/HTML/官方链接只读实测+证据链",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "SRC-02",
+      "title": "归一化、多语言和事实去重",
+      "goal": "GOAL-2",
+      "dependencies": [
+        "SRC-01"
+      ],
+      "acceptance": "来源证据、发布日期/截止日期、国家城市、同活动不同轮次",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "SRC-03",
+      "title": "AI/规则提取及预算约束",
+      "goal": "GOAL-2",
+      "dependencies": [
+        "SRC-02"
+      ],
+      "acceptance": "无法证实标 unknown/needs_review，缓存并预算监控",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "GIV-01",
+      "title": "全球抽奖来源至资格推荐",
+      "goal": "GOAL-2",
+      "dependencies": [
+        "SRC-03"
+      ],
+      "acceptance": "官方规则来源、资格三态、双人奖励/时间/成本",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "GIV-02",
+      "title": "报名预填、授权和状态机",
+      "goal": "GOAL-3",
+      "dependencies": [
+        "GIV-01"
+      ],
+      "acceptance": "实机模拟回执落库、重复执行拦截、异常 unknown",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "GIV-03",
+      "title": "中奖检测与领奖期限",
+      "goal": "GOAL-3",
+      "dependencies": [
+        "GIV-02"
+      ],
+      "acceptance": "模拟邮件候选→人工核对→提醒，不自动兑奖",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "TRP-01",
+      "title": "真实行程自动发现与时间匹配",
+      "goal": "GOAL-2",
+      "dependencies": [
+        "SRC-03",
+        "MON-02"
+      ],
+      "acceptance": "城市日期细分、2027历史样本保守、提前领取提醒",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "TRP-02",
+      "title": "券资格及实际节省判断",
+      "goal": "GOAL-2",
+      "dependencies": [
+        "TRP-01"
+      ],
+      "acceptance": "使用范围/支付/最低消费/叠加/净价值可解释",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "TRP-03",
+      "title": "合规领券与加密卡包",
+      "goal": "GOAL-3",
+      "dependencies": [
+        "TRP-02"
+      ],
+      "acceptance": "saved/claimed/used 区分，凭据加密/解密/删除、官方入口",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "TRP-04",
+      "title": "中文使用指南和规则变化提醒",
+      "goal": "GOAL-3",
+      "dependencies": [
+        "TRP-03"
+      ],
+      "acceptance": "八类说明、官方证据、变更失效、旅途中使用提醒",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "FAR-01",
+      "title": "国际机票社区信息与官方促销",
+      "goal": "GOAL-2",
+      "dependencies": [
+        "SRC-02"
+      ],
+      "acceptance": "真实原帖、风险分类、航线/日期/货币/人数/URL",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "FAR-02",
+      "title": "可信报价和库存供应商接口",
+      "goal": "GOAL-2",
+      "dependencies": [
+        "FAR-01"
+      ],
+      "acceptance": "授权来源接入或明确 blocked，绝不伪造实时有票",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "FAR-03",
+      "title": "两人成本核算、历史价与提醒",
+      "goal": "GOAL-2",
+      "dependencies": [
+        "FAR-02"
+      ],
+      "acceptance": "总价不假精确；信号和实测报价分离",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "INT-01",
+      "title": "模拟 Chromium 报名完整 E2E",
+      "goal": "GOAL-3",
+      "dependencies": [
+        "GIV-02"
+      ],
+      "acceptance": "Windows 实机预填/确认/回执/DB/UI/通知/二次运行",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "INT-02",
+      "title": "真实可用 IMAP 邮件链路",
+      "goal": "GOAL-3",
+      "dependencies": [
+        "GIV-03"
+      ],
+      "acceptance": "本地 .eml 及授权读信，撤权/脱敏/反钓鱼",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "INT-03",
+      "title": "钱包、提醒与全功能 UI 联动",
+      "goal": "GOAL-3",
+      "dependencies": [
+        "TRP-04",
+        "MON-04"
+      ],
+      "acceptance": "点击通知能到详情，登录鉴权、手机适配",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "FIN-01",
+      "title": "114需求/104用例可核查追踪",
+      "goal": "FINAL",
+      "dependencies": [
+        "INT-01",
+        "INT-02",
+        "INT-03",
+        "FAR-03"
+      ],
+      "acceptance": "每项状态有文件和测试证据，禁止 mock 冒充",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "FIN-02",
+      "title": "Windows/公网只读/安全统一验收",
+      "goal": "FINAL",
+      "dependencies": [
+        "FIN-01"
+      ],
+      "acceptance": "E2E-01..16证据，网络限制如实说明",
+      "status": "to_verify_against_current_repo"
+    },
+    {
+      "id": "FIN-03",
+      "title": "一次最终报告和审核包",
+      "goal": "FINAL",
+      "dependencies": [
+        "FIN-02"
+      ],
+      "acceptance": "完整报告+SHA+真实日志+脱敏实机证据；不重复中途交接",
+      "status": "to_verify_against_current_repo"
+    }
+  ],
+  "final_artifacts": [
+    "FINAL_DELIVERY.md",
+    "requirements_114_status.md",
+    "acceptance_104_status.md",
+    "e2e_results.md",
+    "pytest_actual.log",
+    "ruff_actual.log",
+    "windows_browser_evidence_redacted",
+    "real_public_source_evidence_redacted",
+    "review_exports/FlightHunter-review-<HEAD>.zip"
+  ],
+  "rule": "Cannot mark done without runnable path and level-appropriate evidence; cannot claim live source/action where access not tested or authorized."
+}

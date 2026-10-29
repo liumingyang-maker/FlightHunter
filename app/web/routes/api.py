@@ -70,6 +70,32 @@ def health(settings: SettingsDep):
     return _ok({"status": "up", "demo_mode": settings.app.demo_mode})  # type: ignore[attr-defined]
 
 
+@router.get("/ops/status")
+def ops_status(db: DbDep):
+    from app.services.ops.status import system_status
+
+    return _ok(system_status(db))
+
+
+@router.get("/mail/eml-scan")
+def mail_eml_scan(
+    db: DbDep,
+    settings: SettingsDep,
+    dir: str = Query(..., description="本地 .eml 目录绝对路径"),
+):
+    from pathlib import Path
+
+    from app.services.entry.browser_pipeline import mail_candidates_to_notifications
+    from app.services.mail.eml_scan import scan_eml_dir
+
+    result = scan_eml_dir(Path(dir))
+    n = 0
+    if result.get("candidates"):
+        n = mail_candidates_to_notifications(db, settings, result)  # type: ignore[arg-type]
+    db.commit()
+    return _ok({**result, "notifications_created": n})
+
+
 # ---- Profiles ----
 @router.post("/profiles")
 def create_profile(payload: ProfileCreate, db: DbDep):

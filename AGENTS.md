@@ -37,15 +37,16 @@
 ## 4. 审核协作流程
 
 - 默认分支 `develop`；不 force push `main`；不自动合并。
-- **每完成一批修改并 commit 后，必须生成差分审核 ZIP**，供用户上传 GPT：
+- **常规迭代：** 每完成一批修改并 commit 后，可导出差分审核 ZIP：
   ```powershell
   uv run python tools/export_review_bundle.py --base <上次审核过的SHA>
   ```
   或双击 `生成GPT审核包.cmd`。输出目录：`review_exports/`（已 gitignore）。
-- ZIP 内必须包含：HEAD 完整跟踪源码、`docs/REVIEW_FOR_GPT.md`、base→HEAD diff、真实 pytest/ruff 日志、manifest（SHA + 退出码）。
-- 「上次导出 SHA」≠「上次审核通过 SHA」；精确复审时必须显式 `--base <审核通过SHA>`。
-- **禁止**将审核 ZIP 自动上传到任何第三方服务；仅交付本地路径给用户，由用户自行上传。
-- 若用户要求提供 ZIP，必须给出完整本地路径，并声明实际 HEAD SHA（不得冒充旧提交）。
+- **主业务冲刺例外（用户明确要求）：** 集中完成一批完整业务功能时，**不必每 Commit 导出审核包**；持续 commit + 自测即可。全部集成调试完成后，**再统一生成一份最终报告与一份完整审核 ZIP**。
+- ZIP 必须包含：HEAD 完整跟踪源码、`docs/REVIEW_FOR_GPT.md`、base→HEAD diff、真实 pytest/ruff 日志、manifest。
+- 「上次导出 SHA」≠「上次审核通过 SHA」。
+- **禁止**将审核 ZIP 自动上传第三方；仅交付本地路径。
+- 若用户提供 ZIP，必须给出完整本地路径，并声明实际 HEAD SHA。
 
 ## 5. 决策记录
 
