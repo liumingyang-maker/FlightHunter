@@ -79,7 +79,6 @@ def send_notification(
     deliveries = [deliver_console(title, body)]
     if try_toast:
         deliveries.append(deliver_windows_toast(title, body))
-    external_ok = any(d.get("status") == "toast_delivered" for d in deliveries)
     note = "\n\n[delivery]\n" + json.dumps(deliveries, ensure_ascii=False)
     n.body = ((n.body or "") + note)[:4000]
     session.flush()
