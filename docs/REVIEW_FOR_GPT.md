@@ -211,7 +211,7 @@ docs/ADR/0001-project-bootstrap.md
 
 | 审核编号 | 问题 | 修复 | 回归测试 |
 |---|---|---|---|
-| P0-01 | 仅凭标题+购买词即可 verified | `verify/service.py`：须 **同源 + 购买证据 + 日期线索 + 无 CAPTCHA** 才 verified | test_p001_* |
+| P0-01 | 仅凭标题+购买词即可 verified | `verify/service.py`：须 **同源 + 购买证据 + 日期线索** 才 verified；**CAPTCHA 不否定 verified**，只降 automation | test_p001_* |
 | P0-02 | 不可信报价可 urgent_verified | `_is_trusted_quote`：授权源、未过期、人数匹配；否则 urgent_unverified | test_p002_* |
 | P0-03 | SQLite naive/aware 时间比较崩溃 | `ensure_aware_utc`/`dt_gt`；调度与资格统一 | test_p003_* |
 | P0-04 | 无适配器任务标 completed | 无 fetch 时 `status=blocked`，不写 last_*_scan_at | test_p004_* |
@@ -219,9 +219,38 @@ docs/ADR/0001-project-bootstrap.md
 | P1 日期 | 领取期误判为行程可用 | `_date_overlap` 使用期优先；五月领六月用 → 非 usable | test_p1_claim_month_* |
 | P1 成本 | 可选未知费用仍给上界 | 任一未知字段 total_max=None | test_p1_optional_cost_* |
 
-**本轮测试**：`72 passed` · `ruff` 全绿  
+**本轮测试**：`72 passed` → **`82 passed`** · `ruff` 全绿  
 
-**仍接受审核意见、尚未完成**：Playwright 实机填表、邮箱中奖检测、API 鉴权、卡包真实加密、完整 T01–T104 映射。  
+### 第二轮核验：调用路径已接入（回应「是否只新增辅助文件」）
+
+| 修复 | 实际调用位置 |
+|---|---|
+| P0-01 | `verify/service.py::complete_verify_from_html` 门槛重写 |
+| P0-02 | `fare/service.py`：`match_watch_to_deals` + `evaluate_alerts_for_match` 均调用 `_is_trusted_quote` |
+| P0-03 | `scheduler/jobs.py`、`eligibility/service.py` 使用 `ensure_aware_utc` / `dt_gt` |
+| P0-04 | `run_subscription_scan` 无适配器 → `status="blocked"`，不写 `last_*_scan_at` |
+| I10 | `prefill.py` 与 `html_fetcher.py` 均 `from app.core.url_safety import assert_public_http_url` |
+
+复现：
+
+```
+git show --stat 805ed36
+git grep -n "assert_public_http_url\|ensure_aware_utc\|_is_trusted_quote" -- app/
+```
+
+### CAPTCHA 与官方核实分离（按审核保留意见修订）
+
+存在 CAPTCHA **不** 否定 `verified`；设置 `has_captcha=true`，并将 `automation_policy=allowed` 降为 `forbidden`。  
+真实性仍要求：同源 + 购买证据 + 日期线索。
+
+### API 鉴权（P1-1 已完成）
+
+- `app/web/auth.py` 中间件：未认证私人 API → **401 JSON**；页面 → **303 /login**
+- `POST /api/v1/auth/login` 与表单 `/login`；HttpOnly + SameSite=Strict Cookie
+- Token 仅存 `data/auth.json`（gitignore）
+- 测试：`tests/unit/test_auth.py`
+
+**仍 open**：Playwright 实机填表、邮箱中奖检测、卡包真实加密、T01–T104 全文映射。  
 
 ---
 
@@ -233,6 +262,9 @@ docs/ADR/0001-project-bootstrap.md
 | 584600a | 调度器、通知、证据提取、活动核实 |
 | b1c60d6 | 预填守卫、行程导出、调度/通知 API |
 | a20aea4 | 发现管道与报名中心视图 |
+| 296d3c3 | 公开审核说明 REVIEW_FOR_GPT |
+| 805ed36 | P0/P1 审核修复（核实/报价/时区/任务/私网/日期/成本） |
+| （本轮） | CAPTCHA 与 verified 分离；API 登录鉴权；82 tests |
 
 ---
 

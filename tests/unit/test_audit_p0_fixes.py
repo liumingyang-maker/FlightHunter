@@ -93,6 +93,35 @@ def test_p001_can_verify_same_site_with_purchase_and_date(db):
     assert r.verify_status == "verified"
 
 
+def test_p001_captcha_does_not_block_official_verified(db):
+    """CAPTCHA 影响自动化，不影响官方真实性核实（审核修订）。"""
+    r = _round(db, official_url="https://example.org/campaign")
+    html = (
+        "<html><head><title>Official Flight Giveaway</title></head>"
+        "<body><p>No purchase necessary. Entry closes 2027-03-01.</p>"
+        "<p>Please complete the captcha to continue.</p></body></html>"
+    )
+    complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
+    db.commit()
+    assert r.verify_status == "verified"
+    assert r.has_captcha is True
+
+
+def test_p001_captcha_downgrades_auto_policy(db):
+    r = _round(db, official_url="https://example.org/campaign")
+    r.automation_policy = "allowed"
+    db.flush()
+    html = (
+        "<html><head><title>Official Flight Giveaway</title></head>"
+        "<body><p>No purchase necessary. Entry closes 2027-03-01.</p>"
+        "<div>captcha</div></body></html>"
+    )
+    complete_verify_from_html(db, r, html, source_url="https://example.org/campaign")
+    db.commit()
+    assert r.verify_status == "verified"
+    assert r.automation_policy == "forbidden"
+
+
 # ---------- P0-02 ----------
 
 

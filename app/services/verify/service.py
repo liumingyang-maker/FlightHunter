@@ -1,12 +1,13 @@
 """活动核实服务：candidate → verifying → verified/needs_review。
 
-安全不变量（审核 P0-01）：
+安全不变量（审核 P0-01 修订）：
 - 仅凭标题 + 购买关键词 **不得** 标记 verified。
 - verified 必须同时满足：
   1) source_url 与 official_url 同源（或明确 authorized_host）
   2) 存在购买要求证据（明确 true/false，非 unknown）
   3) 存在报名截止日期线索
-  4) 页面未出现 CAPTCHA 拦截迹象
+- CAPTCHA **不** 否定官方真实性；仅影响 automation_policy / 预填模式
+  （由 browser 侧处理，不进入 verified 门槛）。
 否则一律 needs_review。
 """
 
@@ -37,7 +38,6 @@ def _same_site(a: str | None, b: str | None) -> bool:
         return False
     if ha == hb:
         return True
-    # 允许子域同站：a.b.com 与 b.com
     return ha.endswith("." + hb) or hb.endswith("." + ha)
 
 
@@ -70,22 +70,21 @@ def complete_verify_from_html(
     if round_.verify_status != CampaignVerifyStatus.VERIFYING.value:
         begin_verify(session, round_)
 
+    # CAPTCHA：只影响自动化许可，不影响真实性核实
+    if "HUMAN_CHALLENGE" in result.warnings:
+        round_.has_captcha = True
+        if round_.automation_policy == "allowed":
+            round_.automation_policy = "forbidden"
+
     purchase_fields = [r for r in rows if r["field_path"] == "purchase_required"]
-    has_purchase = any(
-        r["quote"] and ("purchase" in (r["quote"] or "").lower() or "购买" in (r["quote"] or ""))
-        for r in purchase_fields
-    )
+    has_purchase = len(purchase_fields) > 0 and all(r.get("quote") for r in purchase_fields)
     has_date = any(r["field_path"] == "dates.clue" for r in rows)
     same_site = _same_site(url, round_.official_url)
-    captcha = "HUMAN_CHALLENGE" in result.warnings
 
-    # 严格门槛：同源 + 购买要求 + 日期线索 + 无验证码阻断
-    can_verify = bool(same_site and has_purchase and has_date and not captcha and result.title)
+    # 严格门槛：同源 + 购买要求证据 + 日期线索（与 CAPTCHA 无关）
+    can_verify = bool(same_site and has_purchase and has_date and result.title)
 
-    if can_verify:
-        target = CampaignVerifyStatus.VERIFIED
-    else:
-        target = CampaignVerifyStatus.NEEDS_REVIEW
+    target = CampaignVerifyStatus.VERIFIED if can_verify else CampaignVerifyStatus.NEEDS_REVIEW
 
     assert_transition(
         "campaign_round",

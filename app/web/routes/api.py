@@ -32,8 +32,10 @@ from app.schemas.domain import (
     TripUpdate,
 )
 from app.web.deps import DbDep, SettingsDep
+from app.web.routes.auth import router as auth_router
 
 router = APIRouter()
+router.include_router(auth_router)
 
 
 def _ok(data, request_id: str | None = None):

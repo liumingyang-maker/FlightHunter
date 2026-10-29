@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}登录 · {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>本地登录</h1></div>
+<section class="card">
+  <p class="muted">私人数据（行程、档案、卡包、报名）需要认证。Token 保存在本机 <code>data/auth.json</code>。</p>
+  <form method="post" action="/login" class="login-form">
+    <label>
+      API Token
+      <input type="password" name="token" required autocomplete="current-password" />
+    </label>
+    <input type="hidden" name="next" value="{{ next_url }}" />
+    <button type="submit">登录</button>
+  </form>
+  <p class="muted">也可在 API 调用时使用 <code>Authorization: Bearer &lt;token&gt;</code>。</p>
+</section>
+{% endblock %}

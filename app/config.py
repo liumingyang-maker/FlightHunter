@@ -10,6 +10,17 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
 
+class AuthConfig(BaseModel):
+    """本地 API 鉴权。私人数据接口必须认证。"""
+
+    enabled: bool = True
+    api_token: str | None = None  # 为空则首次启动自动生成并写入 data/auth.json
+    session_cookie_name: str = "fh_session"
+    session_max_age_seconds: int = 7 * 24 * 3600
+    # 演示环境可在 config 显式设置固定 token 便于测试
+    allow_login_with_token: bool = True
+
+
 class AppConfig(BaseModel):
     name: str = "FlightHunter"
     locale: str = "zh-CN"
@@ -213,6 +224,7 @@ class Settings(BaseSettings):
     model_config = {"env_prefix": "FH_", "env_nested_delimiter": "__", "extra": "ignore"}
 
     app: AppConfig = Field(default_factory=AppConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
     profiles: ProfilesConfig = Field(default_factory=ProfilesConfig)
     categories: CategoriesConfig = Field(default_factory=CategoriesConfig)
     sources: SourcesConfig = Field(default_factory=SourcesConfig)

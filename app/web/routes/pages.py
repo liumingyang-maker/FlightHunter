@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 
 from app.core.timeutils import utc_now_iso
@@ -19,9 +19,43 @@ from app.models import (
     Trip,
     WalletItem,
 )
+from app.web.auth import (
+    create_session_cookie_value,
+    ensure_runtime_secrets,
+    token_matches,
+)
 from app.web.deps import DbDep, SettingsDep
 
 router = APIRouter()
+
+
+@router.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, next: str = "/"):
+    templates = request.app.state.templates
+    settings = request.app.state.settings
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"app_name": settings.app.name, "next_url": next or "/"},
+    )
+
+
+@router.post("/login")
+def login_submit(request: Request, token: str = Form(...), next: str = Form("/")):
+    settings = request.app.state.settings
+    ensure_runtime_secrets(settings)
+    if not token_matches(token, settings):
+        return RedirectResponse(url="/login?error=1", status_code=303)
+    response = RedirectResponse(url=next or "/", status_code=303)
+    response.set_cookie(
+        key=settings.auth.session_cookie_name,
+        value=create_session_cookie_value(settings),
+        httponly=True,
+        samesite="strict",
+        max_age=settings.auth.session_max_age_seconds,
+        path="/",
+    )
+    return response
 
 
 @router.get("/", response_class=HTMLResponse)
