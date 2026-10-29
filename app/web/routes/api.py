@@ -481,6 +481,13 @@ def prefill_plan(payload: PrefillIn, db: DbDep):
     return _ok(plan_to_dict(plan))
 
 
+@router.get("/entries/center")
+def entry_center(db: DbDep):
+    from app.services.entry.center import entry_center_view
+
+    return _ok(entry_center_view(db))
+
+
 @router.get("/notifications")
 def notifications(db: DbDep, unread_only: bool = True, limit: int = Query(50, le=200)):
     from app.services.notify.service import list_unread
