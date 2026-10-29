@@ -361,6 +361,97 @@ def worker(
         engine.dispose()
 
 
+@app.command("demo-browser-e2e")
+def demo_browser_e2e(
+    config: str | None = typer.Option(None, "--config"),
+    submit: bool = typer.Option(
+        False, "--submit", help="对本地模拟站提交（需安装 Playwright 浏览器）"
+    ),
+) -> None:
+    """本地模拟站浏览器 E2E：prepare→预填→可选提交→回执/unknown→通知。"""
+    settings = load_settings(config, project_root=_project_root())
+    from sqlalchemy import select
+
+    from app.core.ids import new_id
+    from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
+    from app.models import Campaign, CampaignRound, Organizer, Profile
+    from app.services.entry.browser_pipeline import execute_browser_entry
+
+    mock = Path(_project_root()) / "fixtures" / "mock_campaign_site" / "index.html"
+    if not mock.is_file():
+        console.print("[red]缺少 fixtures/mock_campaign_site/index.html[/red]")
+        raise typer.Exit(1)
+
+    engine = create_db_engine(settings)
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        profile = session.scalar(select(Profile).limit(1))
+        if profile is None:
+            profile = Profile(
+                id=new_id(),
+                display_name="演示用户",
+                country_of_residence="CN",
+                preferred_departure_airports='["CKG"]',
+            )
+            session.add(profile)
+            session.flush()
+        org = session.scalar(select(Organizer).limit(1))
+        if org is None:
+            org = Organizer(id=new_id(), name="模拟主办方", official_domain="example.org")
+            session.add(org)
+            session.flush()
+        camp = session.scalar(select(Campaign).limit(1))
+        if camp is None:
+            camp = Campaign(
+                id=new_id(),
+                organizer_id=org.id,
+                program_key="demo-e2e",
+                name="模拟活动",
+            )
+            session.add(camp)
+            session.flush()
+        rnd = session.scalar(
+            select(CampaignRound).where(CampaignRound.title.like("模拟%")).limit(1)
+        )
+        if rnd is None:
+            rnd = CampaignRound(
+                id=new_id(),
+                campaign_id=camp.id,
+                edition_key="demo",
+                title="模拟抽奖报名（E2E）",
+                organizer_name="模拟主办方",
+                official_url="https://example.org/demo",
+                verify_status="verified",
+                automation_policy="PREFILL_AND_REVIEW",
+            )
+            session.add(rnd)
+            session.flush()
+        result = execute_browser_entry(
+            session,
+            settings,
+            rnd,
+            profile,
+            file_url=mock.resolve().as_uri(),
+            submit=submit,
+            explicit_submit_consent=submit,
+        )
+        console.print_json(
+            json.dumps(
+                {
+                    "attempt_id": result.attempt_id,
+                    "status": result.status,
+                    "receipt_code": result.receipt_code,
+                    "browser_ok": result.browser_ok,
+                    "message": result.message,
+                    "requires_human": result.requires_human,
+                },
+                ensure_ascii=False,
+            )
+        )
+    engine.dispose()
+
+
 @app.command("list-deals")
 def list_deals(
     risk: str | None = typer.Option(None, "--risk"),

@@ -483,6 +483,106 @@ def prefill_plan(payload: PrefillIn, db: DbDep):
     return _ok(plan_to_dict(plan))
 
 
+class PrefillExecuteIn(BaseModel):
+    round_id: str
+    profile_id: str
+    file_url: str | None = None
+    submit: bool = False
+    explicit_submit_consent: bool = False
+    user_approved_fields: dict[str, str] | None = None
+
+
+@router.post("/entries/prefill-execute")
+def prefill_execute(payload: PrefillExecuteIn, db: DbDep, settings: SettingsDep):
+    """执行浏览器预填管道；默认不自动提交。file_url 用于本地模拟站 E2E。"""
+    from app.services.entry.browser_pipeline import execute_browser_entry
+
+    round_ = db.get(CampaignRound, payload.round_id)
+    profile = db.get(Profile, payload.profile_id)
+    if round_ is None or profile is None:
+        raise HTTPException(status_code=404, detail="round or profile not found")
+    try:
+        result = execute_browser_entry(
+            db,  # type: ignore[arg-type]
+            settings,  # type: ignore[arg-type]
+            round_,
+            profile,
+            file_url=payload.file_url,
+            submit=payload.submit,
+            explicit_submit_consent=payload.explicit_submit_consent,
+        )
+        db.commit()
+    except FlightHunterError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=exc.to_dict()) from exc
+    return _ok(
+        {
+            "attempt_id": result.attempt_id,
+            "status": result.status,
+            "receipt_code": result.receipt_code,
+            "browser_ok": result.browser_ok,
+            "message": result.message,
+            "warnings": result.warnings,
+            "requires_human": result.requires_human,
+        }
+    )
+
+
+@router.post("/wallet/{wallet_item_id}/private-code")
+def wallet_private_code(
+    wallet_item_id: str,
+    payload: dict,
+    db: DbDep,
+    settings: SettingsDep,
+):
+    """加密保存卡包私密码；响应不回显明文。"""
+    from app.services.entry.browser_pipeline import wallet_store_and_notify
+
+    code = (payload or {}).get("code") or ""
+    if not code:
+        raise HTTPException(status_code=400, detail="code required")
+    try:
+        out = wallet_store_and_notify(
+            db,  # type: ignore[arg-type]
+            settings,  # type: ignore[arg-type]
+            wallet_item_id=wallet_item_id,
+            plaintext_code=str(code),
+        )
+        db.commit()
+    except FlightHunterError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=exc.to_dict()) from exc
+    return _ok(out)
+
+
+@router.get("/mail/candidates")
+def mail_candidates(db: DbDep, settings: SettingsDep):
+    """扫描授权邮箱候选（未配置则 blocked）。"""
+    from app.services.entry.browser_pipeline import mail_candidates_to_notifications
+    from app.services.mail.imap_scan import scan_inbox_imap
+
+    cfg = {
+        "enabled": bool(settings.notifications.email_integration_enabled),  # type: ignore[attr-defined]
+        "host": getattr(settings, "email_host", None),
+    }
+    if not cfg["enabled"] or not cfg["host"]:
+        return _ok(
+            {
+                "status": "blocked",
+                "message": "未启用邮件集成或缺少 IMAP host；需用户在本地配置授权后使用",
+            }
+        )
+    result = scan_inbox_imap(
+        settings,  # type: ignore[arg-type]
+        host=str(cfg["host"]),
+        username=str(getattr(settings, "email_user", "")),
+        password=str(getattr(settings, "email_password", "")),
+    )
+    n = mail_candidates_to_notifications(db, settings, result)  # type: ignore[arg-type]
+    db.commit()
+    return _ok({**result, "notifications_created": n})
+
+
 @router.get("/entries/center")
 def entry_center(db: DbDep):
     from app.services.entry.center import entry_center_view

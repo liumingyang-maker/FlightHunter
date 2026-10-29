@@ -197,9 +197,7 @@ def fill_form_with_playwright(
                 submitted=clicked,
             )
     except Exception as exc:
-        return BrowserResult(
-            False, plan.mode, status="failed", message=str(exc), submitted=False
-        )
+        return BrowserResult(False, plan.mode, status="failed", message=str(exc), submitted=False)
 
 
 def run_prefill_for_round(

@@ -24,8 +24,8 @@ def deliver_windows_toast(title: str, body: str) -> dict[str, Any]:
         "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null;"
         "$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent('ToastText02');"
         "$n = $t.GetElementsByTagName('text');"
-        f"$n.Item(0).AppendChild($t.CreateTextNode('{title.replace(chr(39),'')}')) | Out-Null;"
-        f"$n.Item(1).AppendChild($t.CreateTextNode('{body.replace(chr(39),'')}')) | Out-Null;"
+        f"$n.Item(0).AppendChild($t.CreateTextNode('{title.replace(chr(39), '')}')) | Out-Null;"
+        f"$n.Item(1).AppendChild($t.CreateTextNode('{body.replace(chr(39), '')}')) | Out-Null;"
         "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('FlightHunter').Show("
         "[Windows.UI.Notifications.ToastNotification]::new($t));"
     )
