@@ -81,6 +81,26 @@ def execute_browser_entry(
         local_mock = _check_file_url(settings, file_url)
 
     attempt = prepare_entry(session, round_, profile)
+    if attempt.status == "confirmed":
+        return BrowserPipelineResult(
+            attempt_id=attempt.id,
+            status=attempt.status,
+            receipt_code=None,
+            browser_ok=True,
+            message="该活动已有确认报名，无需重复提交",
+            warnings=["ALREADY_CONFIRMED"],
+            requires_human=[],
+        )
+    if attempt.status == "unknown":
+        return BrowserPipelineResult(
+            attempt_id=attempt.id,
+            status=attempt.status,
+            receipt_code=None,
+            browser_ok=False,
+            message="上次结果未知，禁止自动重试；请人工核实",
+            warnings=["UNKNOWN_NO_RETRY"],
+            requires_human=["请人工核实官网"],
+        )
     mark_awaiting_review(session, attempt)
 
     from app.services.browser.prefill import build_prefill_plan

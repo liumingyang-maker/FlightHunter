@@ -56,6 +56,37 @@ def _resolve_file_target(file_url: str) -> tuple[bool, str | None, str | None]:
     return False, None, "非法 file_url（需 file:// 或 .html 沙箱路径）"
 
 
+def _find_local_chromium() -> str | None:
+    """兼容本机已有较旧 Playwright Chromium 缓存（无需再下载）。"""
+    import os
+    from glob import glob
+
+    base = Path(os.environ.get("LOCALAPPDATA", "")) / "ms-playwright"
+    if not base.is_dir():
+        return None
+    patterns = [
+        str(base / "chromium-*" / "chrome-win*" / "chrome.exe"),
+        str(base / "chromium-*" / "chrome-linux" / "chrome"),
+    ]
+    hits: list[str] = []
+    for pat in patterns:
+        hits.extend(glob(pat))
+    if hits:
+        hits.sort(reverse=True)  # 版本号大的优先
+        return hits[0]
+    return None
+
+
+def _launch_browser(p):  # type: ignore[no-untyped-def]
+    exe = _find_local_chromium()
+    if exe:
+        try:
+            return p.chromium.launch(headless=True, executable_path=exe)
+        except Exception:
+            pass
+    return p.chromium.launch(headless=True)
+
+
 def fill_form_with_playwright(
     plan: PrefillPlan,
     *,
@@ -138,7 +169,7 @@ def fill_form_with_playwright(
     warnings = list(plan.warnings)
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = _launch_browser(p)
             page = browser.new_page()
             if target.startswith("file:"):
                 page.goto(target)
