@@ -78,7 +78,7 @@ def _dpapi_protect(data: bytes) -> bytes | None:
         import ctypes
         import ctypes.wintypes as wt
 
-        class DataBlob(ctypes.Structure):  # noqa: N801
+        class DataBlob(ctypes.Structure):
             _fields_ = [("cbData", wt.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
 
         crypt32 = ctypes.windll.crypt32
@@ -100,7 +100,7 @@ def _dpapi_unprotect(data: bytes) -> bytes | None:
         import ctypes
         import ctypes.wintypes as wt
 
-        class DataBlob(ctypes.Structure):  # noqa: N801
+        class DataBlob(ctypes.Structure):
             _fields_ = [("cbData", wt.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
 
         crypt32 = ctypes.windll.crypt32
@@ -115,3 +115,4 @@ def _dpapi_unprotect(data: bytes) -> bytes | None:
         return out
     except Exception:
         return None
+
