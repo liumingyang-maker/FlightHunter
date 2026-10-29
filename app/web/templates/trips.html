@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}我的行程{% endblock %}
+{% block content %}
+<div class="page-head"><h1>我的行程</h1></div>
+<p class="muted">行程只需添加一次，系统自动注册持续扫描；修改日期/城市会重匹配，不清空已领券记录。</p>
+{% if trips %}
+<table>
+  <thead>
+    <tr><th>名称</th><th>国家</th><th>日期</th><th>扫描</th><th>类型</th></tr>
+  </thead>
+  <tbody>
+    {% for t in trips %}
+    <tr>
+      <td><a href="/api/v1/trips/{{ t.id }}/matches">{{ t.label }}</a></td>
+      <td>{{ t.destination_country_code }}</td>
+      <td>{{ t.local_start_date }} ~ {{ t.local_end_date }}</td>
+      <td><span class="badge">{{ t.scan_status }}</span></td>
+      <td>{% if t.demo_only %}<span class="badge warn">演示</span>{% else %}真实{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>暂无行程。可通过 <code>POST /api/v1/trips</code> 创建。</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}旅行卡包{% endblock %}
+{% block content %}
+<div class="page-head"><h1>旅行卡包</h1></div>
+<p class="muted">已保存 ≠ 已领取 ≠ 已使用。动态 App 券不保存过期截图。</p>
+{% if items %}
+<table>
+  <thead><tr><th>状态</th><th>核销</th><th>官方链接</th></tr></thead>
+  <tbody>
+    {% for i in items %}
+    <tr>
+      <td><span class="badge">{{ i.state }}</span></td>
+      <td>{{ i.redemption_state }}</td>
+      <td>{% if i.official_url %}<a href="{{ i.official_url }}" rel="noopener noreferrer" target="_blank">打开</a>{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">卡包为空。公开展示型券可直接保存；账户券需人工/授权领取。</p>
+{% endif %}
+{% endblock %}

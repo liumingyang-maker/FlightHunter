@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}首页 · {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>首页</h1>
+  {% if demo_mode %}<span class="badge warn">Demo 模式</span>{% endif %}
+  <span class="muted">UTC {{ server_time_utc }} · v{{ version }}</span>
+</div>
+
+<div class="stats">
+  <a class="stat" href="/trips"><span class="n">{{ stats.trips }}</span><span>真实行程</span></a>
+  <a class="stat" href="/trips"><span class="n">{{ stats.demo_trips }}</span><span>演示行程</span></a>
+  <a class="stat" href="/fare"><span class="n">{{ stats.deals }}</span><span>机票线索</span></a>
+  <a class="stat" href="/fare"><span class="n">{{ stats.high_risk }}</span><span>高风险</span></a>
+  <a class="stat" href="/wallet"><span class="n">{{ stats.wallet }}</span><span>卡包</span></a>
+  <a class="stat" href="/campaigns"><span class="n">{{ stats.pending_entries }}</span><span>待处理报名</span></a>
+  <a class="stat" href="/campaigns"><span class="n">{{ stats.offers }}</span><span>福利优惠</span></a>
+  <a class="stat" href="/fare"><span class="n">{{ stats.watches }}</span><span>航线愿望单</span></a>
+</div>
+
+<section class="card">
+  <h2>系统状态</h2>
+  <ul class="list">
+    <li>行程后台扫描：创建行程后自动注册可恢复订阅；PC 离线时如实显示中断。</li>
+    <li>机票雷达：情报通道与报价通道分离；无授权报价源时价格标记未知。</li>
+    <li>报名默认「预填 + 人工确认」；提交结果未知禁止自动重试。</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>最近机票提醒</h2>
+  {% if alerts %}
+  <table>
+    <thead><tr><th>标题</th><th>级别</th><th>状态</th></tr></thead>
+    <tbody>
+      {% for a in alerts %}
+      <tr>
+        <td>{{ a.title }}</td>
+        <td><span class="badge">{{ a.alert_level }}</span></td>
+        <td>{{ a.delivery_status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">暂无提醒。可在「机票雷达」导入爆料或创建愿望单。</p>
+  {% endif %}
+</section>
+{% endblock %}

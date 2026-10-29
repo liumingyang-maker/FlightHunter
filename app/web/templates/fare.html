@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}机票雷达{% endblock %}
+{% block content %}
+<div class="page-head"><h1>全球机票捡漏雷达</h1></div>
+<div class="card warn-box">
+  <strong>重要：</strong>{{ note }}。程序不代购、不自动支付/出票；错价/甩尾风险独立展示。
+</div>
+
+<section class="card">
+  <h2>航线愿望单</h2>
+  {% if watches %}
+  <table>
+    <thead><tr><th>名称</th><th>出发</th><th>人数</th><th>状态</th><th>启用</th></tr></thead>
+    <tbody>
+      {% for w in watches %}
+      <tr>
+        <td>{{ w.name }}</td>
+        <td>{{ w.origin_airports }}</td>
+        <td>{{ w.adults }}</td>
+        <td>{{ w.scan_status }}</td>
+        <td>{{ "是" if w.enabled else "否" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">暂无启用中的愿望单。</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>机会列表</h2>
+  {% if deals %}
+  <table>
+    <thead><tr><th>航线</th><th>子类型</th><th>风险</th><th>状态</th><th>购票</th></tr></thead>
+    <tbody>
+      {% for d in deals %}
+      <tr class="{% if d.risk_tier == 'high_risk' %}row-risk{% endif %}">
+        <td>{{ d.origin or "?" }} → {{ d.destination or "?" }}</td>
+        <td>{{ d.offer_subtypes }}</td>
+        <td><span class="badge {{ d.risk_tier }}">{{ d.risk_tier }}</span></td>
+        <td>{{ d.status }}</td>
+        <td>{{ d.booking_status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">暂无线索。可通过 <code>POST /api/v1/fare-deals/import-signal</code> 手动导入分享。</p>
+  {% endif %}
+</section>
+{% endblock %}

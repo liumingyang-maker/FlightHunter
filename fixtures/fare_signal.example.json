@@ -1,0 +1,14 @@
+{
+  "title": "【fixture】CKG-NRT 五月双人往返示例价",
+  "raw_claim_text": "示例：网友分享重庆飞东京双人含税往返约999/人。此为虚构测试数据，不代表现价或库存。",
+  "original_url": "https://example.org/deals/ckg-nrt-demo",
+  "reported_total": 1998,
+  "currency": "CNY",
+  "party_size": 2,
+  "taxes_included": true,
+  "origin_airport": "CKG",
+  "destination_airport": "NRT",
+  "travel_window": "2027-05",
+  "deal_types": ["flash_sale"],
+  "user_supplied": true
+}

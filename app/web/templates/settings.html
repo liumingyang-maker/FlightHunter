@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}设置{% endblock %}
+{% block content %}
+<div class="page-head"><h1>设置</h1></div>
+<section class="card">
+  <h2>运行配置</h2>
+  <ul class="list">
+    <li>Demo 模式：{{ "开" if cfg.demo_mode else "关" }}</li>
+    <li>AI 接口：{{ "已启用" if cfg.ai_enabled else "未启用（可无 Key 运行）" }}</li>
+    <li>行程监控：{{ "启用" if cfg.trip_monitoring else "停用" }}</li>
+    <li>机票雷达：{{ "启用" if cfg.airfare_radar else "停用" }}</li>
+    <li>合法报价源：{{ "已配置" if cfg.quote_provider else "未配置（情报模式，价格显示未知）" }}</li>
+    <li>默认出发机场：{{ cfg.origins }}</li>
+    <li>Web 绑定：{{ cfg.web }}</li>
+  </ul>
+</section>
+<section class="card">
+  <h2>参与者档案</h2>
+  {% if profiles %}
+  <ul class="list">
+    {% for p in profiles %}
+    <li>{{ p.display_name }} · 居住国：{{ p.country_of_residence or "未填写" }} · 国籍：{{ p.nationality or "未填写" }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">尚无档案。真实身份信息仅由你本地填写，系统不根据 IP 推断。</p>
+  {% endif %}
+</section>
+{% endblock %}

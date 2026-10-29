@@ -1,0 +1,152 @@
+# FlightHunter 示例配置（无真实密码/密钥）
+app:
+  name: FlightHunter
+  locale: zh-CN
+  timezone: Asia/Shanghai
+  web_host: 127.0.0.1
+  web_port: 8765
+  mode: local
+  demo_mode: true
+  telemetry_enabled: false
+
+profiles:
+  max_profiles_default: 2
+  require_verified_user_input: true
+  country_of_residence: null
+  nationality: null
+  household_id: null
+  default_preferred_departure_airports: [CKG, TFU, CTU]
+  preferred_party_size: 2
+  max_relocation_cost_cny: null
+
+categories:
+  prioritize: [flight_giveaway, flight_hotel_package]
+  include: [free_hotel, airline_miles, official_travel_grant, travel_voucher]
+  conditional_entry_visible_by_default: false
+  paid_entry_blocked: true
+
+sources:
+  target_verified_seed_count: 100
+  search_languages: [zh-Hans, zh-Hant, en, ja, ko, th, id, ms, es, fr, de, pt, ru, ar]
+  discovery_interval_hours: 6
+  normal_source_interval_hours: 24
+  active_source_interval_hours: 6
+  per_domain_concurrency: 1
+  min_seconds_between_requests_per_domain: 10
+  obey_robots_and_site_terms: true
+  max_redirects: 5
+  max_html_bytes: 5242880
+  max_pdf_bytes: 15728640
+  max_runtime_seconds_per_page: 30
+
+ai:
+  enabled: false
+  provider: openai_compatible
+  base_url: null
+  extraction_model: null
+  escalation_model: null
+  never_send_profile_pii: true
+  cache_by_content_hash: true
+  daily_cost_estimate_limit_cny: 5
+  monthly_cost_estimate_limit_cny: 50
+  daily_request_fallback_limit: 200
+
+entry:
+  default_mode: PREFILL_AND_REVIEW
+  auto_submission_globally_enabled: false
+  require_site_permission_and_per_campaign_consent: true
+  require_fresh_rules_check_hours: 24
+  never_auto_retry_unknown_submit: true
+  never_bypass_captcha_or_2fa: true
+  prohibit_paid_or_sensitive_actions: true
+  isolate_browser_profiles: true
+
+notifications:
+  in_app_enabled: true
+  deadline_hours_before: [72, 24, 6]
+  claim_reply_hours_before: [24, 6, 2]
+  email_integration_enabled: false
+  browser_notifications_enabled: false
+
+storage:
+  sqlite_path: ./data/flighthunter.db
+  encryption_key_backend: os_keyring
+  backups_encrypted: true
+  raw_snapshot_retention_days: 90
+  browser_receipt_image_retention_days: 30
+  participation_history_retention_days: 730
+
+cloud:
+  public_discovery_enabled: false
+  github_actions_schedule_enabled: false
+  cloudflare_d1_sync_enabled: false
+  upload_private_user_data: false
+
+trip_benefits:
+  enabled: true
+  default_destination_timezone_lookup: true
+  trip_creation_requires_user_action: true
+  country_only_search_without_cities: true
+  country_wide_promotions_preferred_until_cities_known: true
+  scan_after_new_trip: true
+  daily_discovery_interval_hours: 24
+  advance_deep_scan_days_before: [90, 30, 7]
+  benefit_claim_policy: PREFILL_AND_REVIEW
+  auto_claim_globally_enabled: false
+  per_site_auto_claim_requires_explicit_authorization: true
+  never_auto_pay_or_reserve_paid_ticket: true
+  never_copy_dynamic_app_qr_as_static_voucher: true
+  include_paid_spend_based_discounts: true
+  count_discount_only_if_planned_spend: true
+  unconfirmed_next_year_event_as_historical_only: true
+  remind_claim_open_hours_before: [24, 1]
+  remind_use_expiry_days_before: [7, 1]
+  remind_use_day_local_hour: 9
+  quiet_hours_local: [23, 8]
+  trip_wallet_local_only: true
+  encrypt_private_codes_and_receipts: true
+  scan_email_for_coupon_receipts_only_if_authorized: false
+  allow_ics_export_without_private_codes: true
+
+trip_monitoring:
+  enabled: true
+  auto_register_on_trip_save: true
+  auto_scan_on_trip_change: true
+  create_real_trip_from_email_without_confirmation: false
+  optional_email_trip_suggestions_enabled: false
+  auto_attach_fare_watch_to_new_trip: true
+  background_scan_while_app_running: true
+  local_offline_reports_actual_status: true
+  on_recovery_rescan: true
+  stop_or_reduce_scan_when_trip_completed: true
+
+airfare_radar:
+  enabled: true
+  default_watch_enabled: false
+  candidate_origin_airports: [CKG, TFU, CTU]
+  destinations_mode: any
+  default_party_size: 2
+  default_currency: CNY
+  default_trip_types: [round_trip, one_way]
+  allowed_risk_tiers_for_urgent_alerts: [standard]
+  high_risk_deals_separate_and_visible: true
+  discover_error_fares_and_hidden_city_for_review: true
+  never_automate_hidden_city_booking: true
+  no_auto_ticket_payment_booking_changes: true
+  prefer_legal_rss_and_public_web_sources: true
+  allow_manual_shares_and_screenshots: true
+  publicly_shared_deals_scan_minutes: 30
+  ordinary_fare_quote_interval_hours: 24
+  quote_provider_enabled: false
+  quote_provider_api_key: null
+  compare_total_cost_for_party: true
+  require_real_quote_for_urgent_verified: true
+  distinguish_reported_price_and_current_quote: true
+  include_taxes_fees_baggage_and_positioning_in_cost: true
+  notify_urgent_unverified: false
+  never_claim_live_inventory_without_authorized_provider: true
+  respect_fetch_and_ai_budget_limits: true
+  default_community_sources:
+    - https://www.smzdm.com/fenlei/guowaijipiao/
+    - https://m.smzdm.com/theme/a788l7k/
+    - https://piao.tips/

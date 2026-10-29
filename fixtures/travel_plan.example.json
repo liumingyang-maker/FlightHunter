@@ -1,0 +1,14 @@
+{
+  "demo_only": true,
+  "name": "2027 日本旅行（演示）",
+  "destination": {"country_code": "JP", "country_name": "日本"},
+  "start_date_local": "2027-05-10",
+  "end_date_local": "2027-05-30",
+  "timezone": "Asia/Tokyo",
+  "travelers": [],
+  "segments": [],
+  "interests": ["shopping", "food", "attractions", "events", "local_transit", "accommodation"],
+  "max_advance_fee": 0,
+  "allow_unannounced_watch": true,
+  "notification_policy": "digest_and_urgent"
+}

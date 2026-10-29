@@ -1,0 +1,598 @@
+"""机票雷达：信号导入、去重、匹配、成本、风险。"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Iterable
+from datetime import UTC, date, datetime
+from statistics import median
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.errors import NotFoundError, ValidationError
+from app.core.ids import new_id, sha256_text, stable_json_hash
+from app.core.state import (
+    FareDealStatus,
+    FareDealSubtype,
+    FareQuoteStatus,
+    FareRiskCode,
+    FareRiskTier,
+    FareSignalStatus,
+)
+from app.models import (
+    FareAlert,
+    FareDeal,
+    FareDealSignal,
+    FarePriceHistory,
+    FareQuote,
+    FareRiskEvidence,
+    FareWatch,
+    FareWatchMatch,
+)
+from app.schemas.domain import (
+    FareCostBreakdown,
+    FareSignalImport,
+    FareWatchCreate,
+)
+
+
+def _parse_subtypes(types: Iterable[str]) -> list[str]:
+    allowed = {m.value for m in FareDealSubtype}
+    out = []
+    for t in types:
+        if t in allowed:
+            out.append(t)
+        elif t:
+            out.append(FareDealSubtype.UNCLASSIFIED.value)
+    return out or [FareDealSubtype.UNCLASSIFIED.value]
+
+
+def _risk_tier_for_subtypes(subtypes: list[str]) -> tuple[str, list[str]]:
+    """高风险独立分栏；由低价不能掩盖风险。"""
+    risk_codes: list[str] = []
+    high = False
+    review = False
+    if FareDealSubtype.ERROR_FARE.value in subtypes:
+        risk_codes.append(FareRiskCode.ERROR_FARE.value)
+        risk_codes.append(FareRiskCode.MISPRICE_WITHDRAWAL.value)
+        review = True
+    if FareDealSubtype.FUEL_SURCHARGE_ANOMALY.value in subtypes:
+        risk_codes.append(FareRiskCode.FUEL_ANOMALY.value)
+        review = True
+    if FareDealSubtype.HIDDEN_CITY.value in subtypes:
+        risk_codes.append(FareRiskCode.HIDDEN_CITY.value)
+        risk_codes.append(FareRiskCode.TERMS_VIOLATION_RISK.value)
+        high = True
+    if FareDealSubtype.AWARD_SPACE.value in subtypes or FareDealSubtype.WAITLIST.value in subtypes:
+        risk_codes.append(FareRiskCode.COMMUNITY_UNVERIFIED.value)
+        review = True
+    if high:
+        return FareRiskTier.HIGH_RISK.value, risk_codes
+    if review:
+        return FareRiskTier.NEEDS_REVIEW.value, risk_codes
+    return FareRiskTier.STANDARD.value, risk_codes
+
+
+def _dedup_key(origin: str | None, dest: str | None, window: str, airline: str | None) -> str:
+    return sha256_text(f"{origin or '?'}|{dest or '?'}|{window or 'flex'}|{airline or '?'}")[:32]
+
+
+def import_signal(session: Session, payload: FareSignalImport) -> tuple[FareDeal, FareDealSignal]:
+    """导入社区爆料。标记为信号，绝不直接写成可买报价。"""
+    if not payload.title.strip():
+        raise ValidationError("爆料标题不能为空")
+
+    window = None
+    if payload.travel_window_start or payload.travel_window_end:
+        window = f"{payload.travel_window_start}~{payload.travel_window_end}"
+
+    subtypes = _parse_subtypes(payload.deal_types)
+    dedup = _dedup_key(payload.origin_airport, payload.destination_airport, window, payload.airline)
+
+    deal = session.scalar(select(FareDeal).where(FareDeal.dedup_key == dedup))
+    now = datetime.now(UTC)
+    if deal is None:
+        tier, risk_codes = _risk_tier_for_subtypes(subtypes)
+        deal = FareDeal(
+            id=new_id(),
+            dedup_key=dedup,
+            origin=payload.origin_airport,
+            destination=payload.destination_airport,
+            travel_date_hint=window,
+            travel_window_start=payload.travel_window_start,
+            travel_window_end=payload.travel_window_end,
+            airline=payload.airline,
+            offer_subtypes=json.dumps(subtypes),
+            status=FareDealStatus.PRICE_UNCONFIRMED.value,
+            risk_tier=tier,
+            first_seen_utc=now,
+            last_seen_utc=now,
+            link=payload.original_url,
+        )
+        session.add(deal)
+        session.flush()
+        for code in risk_codes:
+            session.add(
+                FareRiskEvidence(
+                    id=new_id(),
+                    deal_id=deal.id,
+                    risk_code=code,
+                    cited_url=payload.original_url,
+                    original_statement=payload.raw_claim_text[:2000],
+                    retrieved_at=now,
+                    review_state="pending",
+                )
+            )
+    else:
+        deal.last_seen_utc = now
+        existing_subtypes = set(json.loads(deal.offer_subtypes or "[]"))
+        existing_subtypes.update(subtypes)
+        deal.offer_subtypes = json.dumps(sorted(existing_subtypes))
+        tier, risk_codes = _risk_tier_for_subtypes(sorted(existing_subtypes))
+        deal.risk_tier = tier
+
+    evidence_hash = sha256_text(payload.evidence_text or payload.raw_claim_text)
+    signal = FareDealSignal(
+        id=new_id(),
+        deal_id=deal.id,
+        source_id=payload.source_id,
+        original_url=payload.original_url,
+        title=payload.title,
+        raw_claim_text=payload.raw_claim_text,
+        published_at_utc=payload.published_at_utc,
+        reported_total=payload.reported_total,
+        currency=payload.currency,
+        party_size=payload.party_size,
+        taxes_included=payload.taxes_included,
+        origin_airport=payload.origin_airport,
+        destination_airport=payload.destination_airport,
+        airline=payload.airline,
+        deal_types=json.dumps(subtypes),
+        evidence_text=payload.evidence_text,
+        text_evidence_hash=evidence_hash,
+        source_type="user_supplied" if payload.user_supplied else "community",
+        signal_status=FareSignalStatus.PARSED.value,
+        confidence="low" if payload.user_supplied else "medium",
+        user_supplied=payload.user_supplied,
+    )
+    session.add(signal)
+    session.flush()
+    return deal, signal
+
+
+def create_fare_watch(session: Session, payload: FareWatchCreate) -> FareWatch:
+    watch = FareWatch(
+        id=new_id(),
+        name=payload.name,
+        owner_profile_id=payload.owner_profile_id,
+        trip_id=payload.trip_id,
+        origin_airports=json.dumps(payload.origin_airports),
+        destination_scope=payload.destination_scope,
+        destination_airports=json.dumps(payload.destination_airports),
+        destination_countries=json.dumps(payload.destination_countries),
+        exclude_destination_countries=json.dumps(payload.exclude_destination_countries),
+        depart_window_start=payload.depart_window_start,
+        depart_window_end=payload.depart_window_end,
+        stay_days_min=payload.stay_days_min,
+        stay_days_max=payload.stay_days_max,
+        trip_type=payload.trip_type,
+        cabins=json.dumps(payload.cabins),
+        adults=payload.adults,
+        children=payload.children,
+        require_checked_baggage=payload.require_checked_baggage,
+        max_total_cost_cny=payload.max_total_cost_cny,
+        min_discount_vs_median=payload.min_discount_vs_median,
+        max_positioning_cost_cny=payload.max_positioning_cost_cny,
+        accept_error_fares=payload.accept_error_fares,
+        accept_hidden_city=payload.accept_hidden_city,
+        accept_fuel_anomaly=payload.accept_fuel_anomaly,
+        enabled=payload.enabled,
+        scan_status="idle",
+    )
+    session.add(watch)
+    session.flush()
+    return watch
+
+
+def match_watch_to_deals(session: Session, watch: FareWatch) -> list[FareWatchMatch]:
+    """硬约束匹配：目的地/日期/风险偏好；输出可解释 reason_codes。"""
+    origins = set(json.loads(watch.origin_airports or "[]"))
+    dest_scope = watch.destination_scope
+    dest_airports = set(json.loads(watch.destination_airports or "[]"))
+    dest_countries = set(json.loads(watch.destination_countries or "[]"))
+    exclude = set(json.loads(watch.exclude_destination_countries or "[]"))
+    accept_error = watch.accept_error_fares
+    accept_hidden = watch.accept_hidden_city
+    accept_fuel = watch.accept_fuel_anomaly
+
+    deals = session.scalars(
+        select(FareDeal).where(FareDeal.status != FareDealStatus.WITHDRAWN.value)
+    ).all()
+
+    matches: list[FareWatchMatch] = []
+    now = datetime.now(UTC)
+    for deal in deals:
+        reasons: list[str] = []
+        # 出发：信号可能无 origin，标 unknown
+        if deal.origin and origins and deal.origin not in origins:
+            continue
+        if deal.origin is None:
+            reasons.append("ORIGIN_UNKNOWN")
+
+        # 目的地
+        if dest_scope == "explicit":
+            if (
+                deal.destination
+                and dest_airports
+                and deal.destination not in dest_airports
+                and not dest_countries
+            ):
+                continue
+            if (
+                deal.destination
+                and dest_airports
+                and deal.destination not in dest_airports
+                and dest_countries
+            ):
+                reasons.append("DEST_COUNTRY_UNVERIFIED")
+        # 排除国家（机场码无法直接映射时保留检查）
+        if deal.destination and deal.destination in exclude:
+            continue
+
+        # 日期
+        date_match = "unknown"
+        if watch.depart_window_start and watch.depart_window_end:
+            if deal.travel_window_start and deal.travel_window_end:
+                if (
+                    deal.travel_window_end >= watch.depart_window_start
+                    and deal.travel_window_start <= watch.depart_window_end
+                ):
+                    date_match = "match"
+                else:
+                    continue
+            elif deal.travel_date_hint:
+                date_match = "partial"
+            else:
+                date_match = "unknown"
+                reasons.append("DEPART_WINDOW_UNKNOWN")
+        else:
+            date_match = "any"
+
+        # 风险偏好
+        subtypes = set(json.loads(deal.offer_subtypes or "[]"))
+        risk_match = "standard"
+        if (
+            FareDealSubtype.HIDDEN_CITY.value in subtypes
+            and not accept_hidden
+            and deal.risk_tier == FareRiskTier.HIGH_RISK.value
+        ):
+            continue
+        if FareDealSubtype.ERROR_FARE.value in subtypes and not accept_error:
+            reasons.append("ERROR_FARE_NEEDS_OPT_IN")
+            risk_match = "needs_review"
+        if FareDealSubtype.FUEL_SURCHARGE_ANOMALY.value in subtypes and not accept_fuel:
+            reasons.append("FUEL_ANOMALY_NEEDS_OPT_IN")
+            risk_match = "needs_review"
+        if deal.risk_tier == FareRiskTier.HIGH_RISK.value:
+            risk_match = "high_risk"
+            reasons.append("HIGH_RISK_SEPARATE")
+
+        # 人数：社区爆料 party_size 与 watch.adults 不一致时提示
+        passenger_match = "unknown"
+        signals = session.scalars(
+            select(FareDealSignal).where(FareDealSignal.deal_id == deal.id)
+        ).all()
+        party_sizes = [s.party_size for s in signals if s.party_size]
+        if party_sizes:
+            if any(p != watch.adults for p in party_sizes):
+                passenger_match = "mismatch"
+                reasons.append("PARTY_SIZE_MISMATCH")
+            else:
+                passenger_match = "match"
+        else:
+            reasons.append("PARTY_SIZE_UNKNOWN")
+
+        # 价格状态：仅社区爆料 → not_queried
+        latest_quote = session.scalar(
+            select(FareQuote)
+            .where(FareQuote.deal_id == deal.id)
+            .order_by(FareQuote.observed_at_utc.desc())
+            .limit(1)
+        )
+        price_status = (
+            FareQuoteStatus.OBSERVED.value if latest_quote else FareQuoteStatus.NOT_QUERIED.value
+        )
+        if not latest_quote:
+            reasons.append("NO_AUTHORIZED_QUOTE")
+
+        net_min = None
+        net_max = None
+        if latest_quote and latest_quote.total_price is not None:
+            # 假设报价 pax_count 已覆盖 party；缩放仅在明确时做
+            net_min = latest_quote.total_price
+            net_max = latest_quote.total_price
+        else:
+            # 仅社区价：作为区间参考，不声称可买
+            for s in signals:
+                if s.reported_total is not None:
+                    net_min = (
+                        s.reported_total if net_min is None else min(net_min, s.reported_total)
+                    )
+                    net_max = (
+                        s.reported_total if net_max is None else max(net_max, s.reported_total)
+                    )
+            if net_min is not None:
+                reasons.append("PRICE_FROM_COMMUNITY_ONLY")
+
+        if (
+            watch.max_total_cost_cny is not None
+            and net_max is not None
+            and net_max > watch.max_total_cost_cny
+        ):
+            reasons.append("OVER_BUDGET")
+
+        existing = session.scalar(
+            select(FareWatchMatch).where(
+                FareWatchMatch.watch_id == watch.id,
+                FareWatchMatch.deal_id == deal.id,
+            )
+        )
+        if existing:
+            existing.price_status = price_status
+            existing.date_match = date_match
+            existing.passenger_match = passenger_match
+            existing.risk_match = risk_match
+            existing.net_cost_min = net_min
+            existing.net_cost_max = net_max
+            existing.reason_codes = json.dumps(reasons)
+            existing.evaluated_at_utc = now
+            matches.append(existing)
+        else:
+            m = FareWatchMatch(
+                id=new_id(),
+                watch_id=watch.id,
+                deal_id=deal.id,
+                price_status=price_status,
+                date_match=date_match,
+                passenger_match=passenger_match,
+                risk_match=risk_match,
+                net_cost_min=net_min,
+                net_cost_max=net_max,
+                reason_codes=json.dumps(reasons),
+                evaluated_at_utc=now,
+            )
+            session.add(m)
+            matches.append(m)
+    session.flush()
+    watch.last_scanned_at = now
+    watch.scan_status = "idle"
+    return matches
+
+
+def compute_cost_breakdown(
+    *,
+    base_ticket_total: float | None = None,
+    taxes: float | None = None,
+    positioning: float | None = None,
+    baggage: float | None = None,
+    overnight: float | None = None,
+    other: float | None = None,
+    currency: str = "CNY",
+) -> FareCostBreakdown:
+    """完整出行成本；未知字段不假精确。"""
+    unknown: list[str] = []
+    known_sum = 0.0
+    critical = {
+        "base_ticket_total": base_ticket_total,
+        "required_taxes_and_fees": taxes,
+        "positioning": positioning,
+        "baggage": baggage,
+    }
+    for name, value in critical.items():
+        if value is None:
+            unknown.append(name)
+        else:
+            known_sum += value
+    # 可选费用：有值则计入；无值仅备注，不阻断上界
+    optional_unknown: list[str] = []
+    for name, value in (
+        ("unavoidable_overnight", overnight),
+        ("other_required_cost", other),
+    ):
+        if value is None:
+            optional_unknown.append(name)
+        else:
+            known_sum += value
+
+    if unknown:
+        total_min = known_sum if base_ticket_total is not None else None
+        total_max = None
+    else:
+        total_min = known_sum
+        total_max = known_sum
+
+    return FareCostBreakdown(
+        base_ticket_total=base_ticket_total,
+        required_taxes_and_fees=taxes,
+        positioning=positioning,
+        baggage=baggage,
+        unavoidable_overnight=overnight,
+        other_required_cost=other,
+        currency=currency,
+        total_min=total_min,
+        total_max=total_max,
+        unknown_fields=unknown + optional_unknown,
+        notes=["未含未知项时不给出假精确总价"] if unknown else [],
+    )
+
+
+def historical_median_for_route(
+    session: Session,
+    origin: str,
+    destination: str,
+    *,
+    min_samples: int = 5,
+) -> tuple[float | None, int]:
+    """样本不足返回 (None, n)，禁止假“历史最低”。"""
+    rows = session.scalars(
+        select(FarePriceHistory).where(
+            FarePriceHistory.origin == origin.upper(),
+            FarePriceHistory.destination == destination.upper(),
+        )
+    ).all()
+    if len(rows) < min_samples:
+        return None, len(rows)
+    return median(r.total_price for r in rows), len(rows)
+
+
+def evaluate_alerts_for_match(
+    session: Session, match: FareWatchMatch, *, watch: FareWatch
+) -> FareAlert | None:
+    """三级提醒；无授权报价时不得 urgent_verified。"""
+    deal = session.get(FareDeal, match.deal_id)
+    if deal is None:
+        return None
+    reasons = json.loads(match.reason_codes or "[]")
+    has_quote = match.price_status == FareQuoteStatus.OBSERVED.value
+    high_risk = match.risk_match == FareRiskTier.HIGH_RISK.value
+
+    if high_risk:
+        level = "digest"
+        suppression = "high_risk_separate"
+    elif has_quote and not reasons:
+        level = "urgent_verified"
+        suppression = None
+    elif has_quote:
+        level = "urgent_verified" if match.risk_match == "standard" else "digest"
+        suppression = None
+    else:
+        level = "urgent_unverified"
+        suppression = "community_only" if "PRICE_FROM_COMMUNITY_ONLY" in reasons else None
+
+    body_parts = [
+        f"航线：{deal.origin or '?'} → {deal.destination or '?'}",
+        f"风险：{deal.risk_tier}",
+        f"价格状态：{match.price_status}",
+    ]
+    if match.net_cost_min is not None:
+        body_parts.append(f"参考成本区间：{match.net_cost_min} ~ {match.net_cost_max}")
+    body_parts.append("报价≠成交价；请到正规出票平台自行核验并支付。")
+
+    title = f"{'神价线索' if not has_quote else '报价更新'} {deal.origin or ''}-{deal.destination or ''}"
+    content_hash = stable_json_hash(
+        {
+            "deal": deal.id,
+            "watch": watch.id,
+            "price_status": match.price_status,
+            "net_min": match.net_cost_min,
+            "tier": deal.risk_tier,
+        }
+    )
+    existing = session.scalar(
+        select(FareAlert).where(
+            FareAlert.watch_id == watch.id,
+            FareAlert.deal_id == deal.id,
+            FareAlert.content_hash == content_hash,
+        )
+    )
+    if existing:
+        return existing
+
+    alert = FareAlert(
+        id=new_id(),
+        watch_id=watch.id,
+        deal_id=deal.id,
+        alert_level=level,
+        content_hash=content_hash,
+        delivery_status="pending",
+        title=title,
+        body="\n".join(body_parts),
+        suppression_reason=suppression,
+    )
+    session.add(alert)
+    session.flush()
+    return alert
+
+
+def record_quote(
+    session: Session,
+    *,
+    deal_id: str | None,
+    watch_id: str | None,
+    provider: str,
+    party_size: int,
+    total_price: float | None,
+    currency: str = "CNY",
+    taxes_included: bool | None = None,
+    baggage_included: bool | None = None,
+    origin: str | None = None,
+    destination: str | None = None,
+    depart_date: date | None = None,
+    return_date: date | None = None,
+    booking_deeplink: str | None = None,
+    availability_confirmed: bool = False,
+    quote_expiry_utc: datetime | None = None,
+) -> FareQuote:
+    """记录合法报价快照。availability_confirmed 仅在源明确证实时 true。"""
+    if total_price is None and not availability_confirmed:
+        status = FareQuoteStatus.UNAVAILABLE.value
+    else:
+        status = FareQuoteStatus.OBSERVED.value
+
+    quote = FareQuote(
+        id=new_id(),
+        deal_id=deal_id,
+        watch_id=watch_id,
+        provider=provider,
+        booking_deeplink=booking_deeplink,
+        observed_at_utc=datetime.now(UTC),
+        origin=origin,
+        destination=destination,
+        depart_date=depart_date,
+        return_date=return_date,
+        pax_count=party_size,
+        total_price=total_price,
+        currency=currency,
+        tax_included=taxes_included,
+        baggage_included=baggage_included,
+        availability_confirmed=availability_confirmed,
+        quote_expiry_utc=quote_expiry_utc,
+        quote_status=status,
+    )
+    session.add(quote)
+
+    if origin and destination and total_price is not None:
+        session.add(
+            FarePriceHistory(
+                id=new_id(),
+                route_key=f"{origin.upper()}-{destination.upper()}",
+                origin=origin.upper(),
+                destination=destination.upper(),
+                depart_date=depart_date,
+                pax_count=party_size,
+                total_price=total_price,
+                currency=currency,
+                provider=provider,
+                observed_at_utc=quote.observed_at_utc,
+            )
+        )
+    session.flush()
+    return quote
+
+
+def mark_booked(session: Session, deal_id: str, *, method: str = "user_reported") -> FareDeal:
+    deal = session.get(FareDeal, deal_id)
+    if deal is None:
+        raise NotFoundError("机会不存在")
+    if method not in (
+        "user_reported",
+        "confirmed_from_authorized_source",
+        "unknown",
+        "canceled_by_user",
+        "not_booked",
+    ):
+        raise ValidationError("非法购票状态")
+    deal.booking_status = method
+    session.flush()
+    return deal
