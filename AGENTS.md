@@ -37,10 +37,15 @@
 ## 4. 审核协作流程
 
 - 默认分支 `develop`；不 force push `main`；不自动合并。
-- 每完成一批修改：跑 `pytest` + `ruff`，真实记录退出码，再 commit / push。
-- 差分审核包：`uv run python tools/export_review_bundle.py --base <上次审核过的SHA>`  
-  或双击 `生成GPT审核包.cmd`。输出在 `review_exports/`（已 gitignore）。
-- 「上次导出 SHA」≠「上次审核通过 SHA」。
+- **每完成一批修改并 commit 后，必须生成差分审核 ZIP**，供用户上传 GPT：
+  ```powershell
+  uv run python tools/export_review_bundle.py --base <上次审核过的SHA>
+  ```
+  或双击 `生成GPT审核包.cmd`。输出目录：`review_exports/`（已 gitignore）。
+- ZIP 内必须包含：HEAD 完整跟踪源码、`docs/REVIEW_FOR_GPT.md`、base→HEAD diff、真实 pytest/ruff 日志、manifest（SHA + 退出码）。
+- 「上次导出 SHA」≠「上次审核通过 SHA」；精确复审时必须显式 `--base <审核通过SHA>`。
+- **禁止**将审核 ZIP 自动上传到任何第三方服务；仅交付本地路径给用户，由用户自行上传。
+- 若用户要求提供 ZIP，必须给出完整本地路径，并声明实际 HEAD SHA（不得冒充旧提交）。
 
 ## 5. 决策记录
 

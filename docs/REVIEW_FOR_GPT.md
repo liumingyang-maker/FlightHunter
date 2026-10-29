@@ -291,6 +291,7 @@ git grep -n "assert_public_http_url\|ensure_aware_utc\|_is_trusted_quote" -- app
 - 遇到需用户账号授权的项，实现为配置位 + 文档步骤，不伪造成功  
 - 本报告随代码演进更新；以仓库最新 commit 的 `docs/REVIEW_FOR_GPT.md` 为准  
 - 外部建议的采纳策略以 **`AGENTS.md` 第 3 节**为准  
+- **每轮代码变更后必须生成 `review_exports/FlightHunter-review-<SHA>.zip` 交给用户上传（`AGENTS.md` 第 4 节）**  
 
 ---
 
