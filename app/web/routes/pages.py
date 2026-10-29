@@ -162,13 +162,34 @@ def wallet_page(request: Request, db: DbDep, settings: SettingsDep):
 @router.get("/campaigns", response_class=HTMLResponse)
 def campaigns_page(request: Request, db: DbDep, settings: SettingsDep):
     templates = request.app.state.templates
+    import json as _json
+
     rounds = db.scalars(
         select(CampaignRound).order_by(CampaignRound.updated_at_utc.desc()).limit(50)
     ).all()
+
+    def _view(r: CampaignRound) -> dict:
+        source_list = None
+        if r.tags:
+            try:
+                data = _json.loads(r.tags)
+                if isinstance(data, dict):
+                    source_list = data.get("source_list_url")
+            except Exception:
+                source_list = None
+        return {
+            "title": r.title,
+            "organizer_name": r.organizer_name,
+            "official_url": r.official_url,
+            "source_list_url": source_list,
+            "verify_status": r.verify_status,
+            "demo_only": r.demo_only,
+        }
+
     return templates.TemplateResponse(
         request,
         "campaigns.html",
-        {"rounds": rounds, "app_name": settings.app.name},
+        {"rounds": [_view(r) for r in rounds], "app_name": settings.app.name},
     )
 
 

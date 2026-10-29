@@ -40,6 +40,9 @@ async def attempt_official_evidence(
 ) -> dict:
     tags = _load_tags(round_)
     url = round_.official_url
+    if not url:
+        # 上一轮从聚合页粗提的官方候选；成功抓取后写入 official_url，仍不 verified
+        url = tags.get("discovered_official_candidate") or None
     source_list = tags.get("source_list_url")
     target = url or source_list
     if not target:
@@ -75,7 +78,9 @@ async def attempt_official_evidence(
             "message": result.message,
         }
 
-    is_agg = url is None
+    is_agg = round_.official_url is None and url is None
+    # 若本轮使用 discovered 候选抓取，按官方页路径记证据，但 verify 仍保持 candidate
+    use_discovered = bool(url and round_.official_url is None)
     ch = content_hash_of_html(result.text or "")
     ev = Evidence(
         id=new_id(),
@@ -92,9 +97,13 @@ async def attempt_official_evidence(
     )
     session.add(ev)
     tags["last_provenance_fail_count"] = 0
+    if use_discovered and not round_.official_url:
+        # 记录候选官方页；不自动 verified
+        round_.official_url = (result.final_url or target)[:2000]
+        tags["official_url_from"] = "aggregator_link_candidate"
     _save_tags(round_, tags)
     session.flush()
-    return {
+    out = {
         "ok": True,
         "evidence_id": ev.id,
         "source_url": ev.source_url,
@@ -103,6 +112,58 @@ async def attempt_official_evidence(
         "kind": ev.source_kind,
         "note": "快照已保存；聚合≠官方 verified",
     }
+    if is_agg and result.ok:
+        discovered = _discover_official_candidate(result.text or "", result.final_url or target, round_)
+        if discovered:
+            tags["discovered_official_candidate"] = discovered
+            _save_tags(round_, tags)
+            out["discovered_official_candidate"] = discovered
+            out["note"] = "已保存聚合快照并记录官方候选链接；仍需人工/后续官方快照核实，不自动 verified"
+    return out
+
+
+def _discover_official_candidate(html: str, page_url: str, round_: CampaignRound) -> str | None:
+    """从聚合页粗提主办方外链；仅作候选，不写 official_url，不 verified。"""
+    from urllib.parse import urljoin, urlparse
+
+    from bs4 import BeautifulSoup
+
+    from app.core.url_safety import assert_public_http_url
+
+    page_host = (urlparse(page_url).hostname or "").lower()
+    # 品牌词：标题中连续大写词或常见品牌片段（保守）
+    tokens = []
+    for part in (round_.title or "").split():
+        p = part.strip(".,!?$\"'()[]{}").lower()
+        if len(p) >= 4 and p.isalpha() and p not in {"cash", "giveaway", "sweepstakes", "contest", "verified", "left", "home", "garden"}:
+            tokens.append(p)
+    if not tokens:
+        return None
+    soup = BeautifulSoup(html, "html.parser")
+    candidates: list[str] = []
+    for a in soup.find_all("a", href=True)[:400]:
+        href = urljoin(page_url, a["href"])
+        if not href.startswith("http"):
+            continue
+        host = (urlparse(href).hostname or "").lower()
+        if not host or host == page_host or host.endswith("." + page_host):
+            continue
+        if any(x in host for x in ("facebook.com", "instagram.com", "x.com", "twitter.com", "youtube.com", "tiktok.com", "pinterest.com")):
+            continue
+        label = (a.get_text(" ", strip=True) or "").lower()
+        if any(t in host or t in label or t in href.lower() for t in tokens[:6]):
+            try:
+                assert_public_http_url(href)
+            except Exception:
+                continue
+            candidates.append(href.split("#")[0])
+    # 去重保序
+    seen: set[str] = set()
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            return c
+    return None
 
 
 async def attempt_official_evidence_batch(
@@ -129,8 +190,22 @@ async def attempt_official_evidence_batch(
                 Evidence.field_path == "official_page_snapshot",
             )
         )
+        has_agg_ev = session.scalar(
+            select(Evidence).where(
+                Evidence.entity_type == "campaign_round",
+                Evidence.entity_id == r.id,
+                Evidence.field_path == "aggregator_page_snapshot",
+            )
+        )
+        discovered = tags.get("discovered_official_candidate")
         if has_official_ev and r.official_url:
             continue
+        # 已有聚合快照但尚无官方候选：本轮可再试（在 fail 退避之后由排序决定）
+        if has_agg_ev and not discovered and not r.official_url:
+            # 已成功抓过聚合页且未发现官方链接 → 退避 2h 避免死循环重抓
+            last_ok = tags.get("last_provenance_ok")
+            if last_ok:
+                continue
         fail_n = int(tags.get("last_provenance_fail_count") or 0)
         last = tags.get("last_provenance_attempt_utc")
         if fail_n and last:

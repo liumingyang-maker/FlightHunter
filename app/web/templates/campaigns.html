@@ -2,10 +2,10 @@
 {% block title %}找机会{% endblock %}
 {% block content %}
 <div class="page-head"><h1>找机会（抽奖活动期）</h1></div>
-<p class="muted">资格为三态：符合 / 不符合 / 需核实。未找到限制 ≠ 明确不限。</p>
+<p class="muted">资格为三态：符合 / 不符合 / 需核实。未找到限制 ≠ 明确不限。聚合线索 ≠ 已官方核实。</p>
 {% if rounds %}
 <table>
-  <thead><tr><th>标题</th><th>主办方</th><th>链接</th><th>核实状态</th><th>类型</th></tr></thead>
+  <thead><tr><th>标题</th><th>线索主办方</th><th>链接</th><th>核实状态</th><th>数据类型</th></tr></thead>
   <tbody>
     {% for r in rounds %}
     <tr>
@@ -13,12 +13,13 @@
       <td>{{ r.organizer_name }}</td>
       <td>
         {% if r.official_url %}
-          <a href="{{ r.official_url }}" rel="noopener noreferrer" target="_blank">官方/来源</a>
+          <a href="{{ r.official_url }}" rel="noopener noreferrer" target="_blank">官方页</a>
+        {% elif r.source_list_url %}
+          <a href="{{ r.source_list_url }}" rel="noopener noreferrer" target="_blank" title="聚合/列表线索页，非官方报名地址">线索页</a>
         {% else %}
-          <span class="muted" title="聚合线索，非官方报名地址">线索页（非官方）</span>
+          <span class="muted" title="聚合线索，非官方报名地址">无线索链接</span>
         {% endif %}
       </td>
-      <td>{{ r.organizer_name }}</td>
       <td><span class="badge">{{ r.verify_status }}</span></td>
       <td>{% if r.demo_only %}<span class="badge warn">fixture</span>{% else %}真实{% endif %}</td>
     </tr>

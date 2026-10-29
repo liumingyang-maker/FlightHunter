@@ -421,6 +421,17 @@ def list_rounds(db: DbDep, status: str | None = None, limit: int = Query(50, le=
     if status:
         stmt = stmt.where(CampaignRound.verify_status == status)
     rows = db.scalars(stmt).all()
+    import json as _json
+
+    def _source_list(r: CampaignRound) -> str | None:
+        if not r.tags:
+            return None
+        try:
+            data = _json.loads(r.tags)
+            return data.get("source_list_url") if isinstance(data, dict) else None
+        except Exception:
+            return None
+
     return _ok(
         [
             {
@@ -428,6 +439,7 @@ def list_rounds(db: DbDep, status: str | None = None, limit: int = Query(50, le=
                 "title": r.title,
                 "organizer_name": r.organizer_name,
                 "official_url": r.official_url,
+                "source_list_url": _source_list(r),
                 "verify_status": r.verify_status,
                 "demo_only": r.demo_only,
                 "entry_timezone": r.entry_timezone,
