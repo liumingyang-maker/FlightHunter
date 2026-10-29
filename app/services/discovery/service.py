@@ -260,9 +260,7 @@ def materialize_raffle_candidates(
                 trust_notes="聚合平台线索，非确认主办方；须到官方站核实",
             )
             session.add(org)
-            org_created = True
         else:
-            org_created = False
             if org.official_domain:
                 # 不覆盖已有真实主办方域
                 pass
