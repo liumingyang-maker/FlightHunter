@@ -10,13 +10,13 @@ import argparse
 import io
 import json
 import os
-from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
 import time
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from pathlib import Path, PurePosixPath
 
 SENSITIVE_RE = re.compile(
     r"(^|/)(?:\.env(?:\.[^/]*)?|auth\.json|credentials\.json|"
@@ -77,7 +77,7 @@ def check_sensitive(path: str) -> bool:
 
 def get_source(root: Path) -> list[tuple[str, bytes]]:
     p = subprocess.run(["git", "archive", "--format=zip", "HEAD"], cwd=root,
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+                       capture_output=True, timeout=120)
     if p.returncode:
         raise RuntimeError("无法从 HEAD 导出源码：" + p.stderr.decode("utf-8", "replace")[:1000])
     items: list[tuple[str, bytes]] = []
@@ -163,7 +163,7 @@ def main() -> int:
             "project": root.name,
             "source_origin": "git archive HEAD; complete tracked-source snapshot",
             "head_sha": head, "base_sha": base,
-            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "created_at_utc": datetime.now(UTC).isoformat(),
             "tests": {
                 "pytest": "not_run" if result_pytest is None else result_pytest["exit_code"],
                 "ruff": "not_run" if result_ruff is None else result_ruff["exit_code"],
