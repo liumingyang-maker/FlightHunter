@@ -93,7 +93,6 @@ def test_discovery_e2e_persists_signals_and_alerts(db, settings: Settings, monke
     assert any(r.get("signals_persisted", 0) >= 1 for r in results if r.get("source_id"))
     sigs = db.scalars(select(FareDealSignal)).all()
     assert any(s.origin_airport == "CKG" for s in sigs)
-    matches = db.scalars(select(FareWatchMatch)).all() if False else []
     from app.models import FareWatchMatch
 
     matches = db.scalars(select(FareWatchMatch)).all()
