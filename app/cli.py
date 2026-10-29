@@ -175,11 +175,18 @@ def discover(
         key = idempotency_key(
             "discover_batch", module, "dry" if dry_run else "exec", utc_now().strftime("%Y%m%d%H%M")
         )
+        ok = sum(1 for r in results if r.get("status") == "ok")
+        failed = sum(1 for r in results if r.get("status") in ("failed", "denied", "manual_only"))
+        run_status = "completed"
+        if results and ok == 0 and failed > 0:
+            run_status = "failed"
+        elif ok and failed:
+            run_status = "partial"
         session.add(
             TaskRun(
                 id=new_id(),
                 task_type="source_discovery_batch",
-                status="completed",
+                status="skipped" if dry_run else run_status,
                 idempotency_key=key,
                 dry_run=dry_run,
                 message=json.dumps(
@@ -203,8 +210,9 @@ def discover(
             )
         )
         session.flush()
-        ok = sum(1 for r in results if r.get("status") == "ok")
-        console.print(f"[green]完成：ok={ok} · 总步骤={len(results)}[/green]")
+        console.print(
+            f"[green]完成：ok={ok} failed={failed} · 总步骤={len(results)} · batch={run_status}[/green]"
+        )
     engine.dispose()
 
 

@@ -66,6 +66,7 @@ extend-exclude = [
     "_audit_round5_tmp",
     "_audit_round6_tmp",
     "_audit_round7_tmp",
+    "_audit_round8_tmp",
     "_audit_tool_tmp",
     "review_exports",
     "data",
@@ -115,5 +116,6 @@ markers = [
 [tool.coverage.run]
 source = ["app"]
 omit = ["app/alembic/*", "app/web/static/*"]
+
 
 

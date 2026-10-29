@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from urllib import robotparser
 from urllib.parse import urljoin, urlparse
@@ -195,24 +196,66 @@ class HttpxFetchAdapter(SourceAdapter):
 
     def parse(self, text: str, *, url: str) -> list[ParsedSignal]:
         soup = BeautifulSoup(text, "html.parser")
-        (soup.title.string or "").strip() if soup.title and soup.title.string else url
         signals: list[ParsedSignal] = []
         for a in soup.find_all("a", href=True)[:200]:
             label = a.get_text(" ", strip=True)
-            if not label or len(label) < 8:
-                continue
-            if any(k in label for k in ("元", "BUG", "错价", "神价", "特价", "促销", "甩尾")):
-                signals.append(
-                    ParsedSignal(
-                        title=label[:200],
-                        raw_claim_text=label,
-                        url=a["href"] if a["href"].startswith("http") else url,
-                        confidence="low",
-                    )
-                )
+            href = a["href"] if a["href"].startswith("http") else url
+            sig = parse_deal_label(label, page_url=href)
+            if sig:
+                signals.append(sig)
             if len(signals) >= 50:
                 break
         return signals
+
+
+_IATA_RE = re.compile(r"\b([A-Z]{3})\b")
+_PRICE_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*元")
+_DEAL_KW = ("元", "BUG", "错价", "神价", "特价", "促销", "甩尾", "漏油", "尾单")
+_RISK_KW = {
+    "hidden_city": ("甩尾", "hidden city", "hidden-city"),
+    "error_fare": ("BUG", "错价", "error fare", "error-fare"),
+    "fuel_surcharge_anomaly": ("漏油", "yq", "fuel surcharge"),
+    "flash_sale": ("特价", "闪购", "促销", "flash"),
+}
+
+
+def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
+    """从中文/混合标签抽取航线、价格与风险子类型；识别不出则字段为 None。"""
+    if not label or len(label) < 6:
+        return None
+    if not any(k in label for k in _DEAL_KW):
+        return None
+    codes = [c for c in _IATA_RE.findall(label) if c.isalpha() and c.isupper()]
+    skip = {"AND", "THE", "BUG", "YQ", "USA", "USD", "CNY", "VIP", "APP"}
+    codes = [c for c in codes if c not in skip]
+    origin = codes[0] if len(codes) >= 2 else None
+    dest = codes[1] if len(codes) >= 2 else None
+    price = None
+    m = _PRICE_RE.search(label)
+    if m:
+        try:
+            price = float(m.group(1).replace(",", ""))
+        except ValueError:
+            price = None
+    types: list[str] = []
+    low = label.lower()
+    for t, kws in _RISK_KW.items():
+        if any(k.lower() in low or k in label for k in kws):
+            types.append(t)
+    if not types:
+        types = ["unclassified"]
+    return ParsedSignal(
+        title=label[:200],
+        raw_claim_text=label,
+        url=page_url if page_url.startswith("http") else None,
+        reported_total=price,
+        currency="CNY" if price is not None else None,
+        party_size=None,
+        origin_airport=origin,
+        destination_airport=dest,
+        deal_types=types,
+        confidence="low",
+    )
 
 
 async def polite_delay(seconds: float) -> None:

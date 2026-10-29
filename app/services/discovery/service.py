@@ -84,6 +84,16 @@ def ingest_fetch_result(
     return cand
 
 
+def _risk_tier_for_subtypes(subtypes: list[str]) -> str:
+    high = {"hidden_city"}
+    review = {"error_fare", "fuel_surcharge_anomaly", "unclassified"}
+    if any(t in high for t in subtypes):
+        return "high_risk"
+    if any(t in review for t in subtypes):
+        return "needs_review"
+    return "standard"
+
+
 def materialize_fare_signals(
     session: Session,
     source: Source,
@@ -92,15 +102,24 @@ def materialize_fare_signals(
     candidate_url: str | None = None,
     limit: int = 20,
 ) -> list[FareDealSignal]:
-    """把解析结果写成 FareDeal + FareDealSignal（不是预览）。"""
+    """把解析结果写成 FareDeal + FareDealSignal；子类型与风险写入主记录。"""
     created: list[FareDealSignal] = []
     now = utc_now()
     for s in parsed[:limit]:
         origin = (s.origin_airport or "").upper() or None
         dest = (s.destination_airport or "").upper() or None
         window = "flex"
-        dedup = f"src:{source.id}:{s.title[:80]}:{origin}-{dest}:{window}"
+        subtypes = list(s.deal_types or ["unclassified"])
+        if (
+            "hidden_city" in subtypes
+            or "error_fare" in subtypes
+            or "fuel_surcharge_anomaly" in subtypes
+        ):
+            dedup = f"src:{source.id}:{s.title[:80]}:{origin}-{dest}:{window}"
+        else:
+            dedup = f"src:{source.id}:{s.title[:80]}:{origin}-{dest}:{window}"
         deal = session.scalar(select(FareDeal).where(FareDeal.dedup_key == dedup))
+        risk = _risk_tier_for_subtypes(subtypes)
         if deal is None:
             deal = FareDeal(
                 id=new_id(),
@@ -108,9 +127,9 @@ def materialize_fare_signals(
                 origin=origin,
                 destination=dest,
                 travel_date_hint=window,
-                offer_subtypes=json.dumps(["unclassified"]),
+                offer_subtypes=json.dumps(subtypes),
                 status="price_unconfirmed",
-                risk_tier="needs_review",
+                risk_tier=risk,
                 first_seen_utc=now,
                 last_seen_utc=now,
                 link=s.url or candidate_url,
@@ -119,8 +138,10 @@ def materialize_fare_signals(
             session.flush()
         else:
             deal.last_seen_utc = now
+            merged = set(json.loads(deal.offer_subtypes or "[]")) | set(subtypes)
+            deal.offer_subtypes = json.dumps(sorted(merged))
+            deal.risk_tier = _risk_tier_for_subtypes(sorted(merged))
 
-        # 同 URL+标题 去重信号
         sig_url = s.url or candidate_url
         existing_sig = session.scalar(
             select(FareDealSignal).where(
@@ -145,7 +166,7 @@ def materialize_fare_signals(
             origin_airport=origin,
             destination_airport=dest,
             airline=s.airline,
-            deal_types=json.dumps(s.deal_types or ["unclassified"]),
+            deal_types=json.dumps(subtypes),
             source_type="community",
             signal_status="parsed",
             confidence=s.confidence,
@@ -164,23 +185,22 @@ def materialize_trip_offer(
     *,
     country_code: str | None = None,
 ) -> BenefitOffer | None:
-    """把行程类解析线索落成 BenefitOffer（候选/待核实，不假装 verified）。"""
+    """行程线索 → BenefitOffer 候选；社区帖不得写成已核实 official_url。"""
     existing = session.scalar(
         select(BenefitOffer).where(
             BenefitOffer.title == parsed.title[:400],
-            BenefitOffer.source_id == source.id,  # type: ignore[attr-defined]
+            BenefitOffer.source_id == source.id,
         )
     )
     if existing:
         return existing
-    # source_id 列可能无在 BenefitOffer — 检查模型
     offer = BenefitOffer(
         id=new_id(),
         organizer_name=source.name,
         title=parsed.title[:400],
         category="travel_deal",
         claim_method="PUBLIC_DISPLAY",
-        official_url=parsed.url or source.base_url,
+        official_url=None,
         country_codes=json.dumps([country_code.upper()] if country_code else []),
         date_certainty="unconfirmed",
         conditions=json.dumps({"raw_claim": parsed.raw_claim_text[:500]}),
@@ -188,6 +208,7 @@ def materialize_trip_offer(
         face_value_max=parsed.reported_total,
         face_value_currency=parsed.currency,
         offer_status="candidate",
+        source_id=source.id,
         source_url=parsed.url or source.base_url,
         demo_only=False,
     )
@@ -262,18 +283,20 @@ async def fetch_source(
     if result.ok and result.text:
         parsed = adapter.parse(result.text, url=source.base_url)[:20]
 
+    effective_module = module if module != "all" else (source.module or "fare")
     signals_persisted = 0
     offers_persisted = 0
     if persist_signals and parsed:
-        if module == "fare":
+        if effective_module == "fare":
             sigs = materialize_fare_signals(
                 session, source, parsed, candidate_url=cand.url if cand else None
             )
             signals_persisted = len(sigs)
-        elif module == "trip":
+        elif effective_module == "trip":
             for p in parsed:
                 if materialize_trip_offer(session, source, p, country_code=country_code):
                     offers_persisted += 1
+        # raffle/shared：仅 RawCandidate，不伪造业务实体
 
     source.last_fetch_at = utc_now()
     session.flush()
@@ -285,11 +308,13 @@ async def fetch_source(
             "origin": s.origin_airport,
             "destination": s.destination_airport,
             "confidence": s.confidence,
+            "deal_types": s.deal_types,
         }
         for s in parsed[:10]
     ]
     return {
         "source_id": source.id,
+        "module": effective_module,
         "status": "ok" if result.ok else "failed",
         "candidate_id": cand.id if cand else None,
         "error_code": result.error_code,
@@ -332,7 +357,22 @@ async def run_discovery(
             )
         )
     session.flush()
-    if after_fetch and not dry_run and module in ("fare", "all"):
-        stats = match_and_alert_fare(session)
-        out.append({"source_id": None, "status": "post_match", **stats})
+    if after_fetch and not dry_run:
+        if module in ("fare", "all"):
+            stats = match_and_alert_fare(session)
+            out.append({"source_id": None, "status": "post_match", **stats})
+        if module in ("trip", "all"):
+            from app.models import Trip
+            from app.services.trips.service import rematch_trip_benefits
+
+            trips = session.scalars(select(Trip).where(Trip.archived == False)).all()  # noqa: E712
+            for t in trips:
+                rematch_trip_benefits(session, t)
+            out.append(
+                {
+                    "source_id": None,
+                    "status": "post_trip_rematch",
+                    "trips": len(trips),
+                }
+            )
     return out
