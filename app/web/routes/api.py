@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -17,6 +17,7 @@ from app.models import (
     FareDeal,
     FareQuote,
     FareWatch,
+    Notification,
     Profile,
     Trip,
     WalletItem,
@@ -436,3 +437,91 @@ def cost_breakdown(payload: CostIn):
         currency=payload.currency,
     )
     return _ok(b.model_dump())
+
+
+# ---- Export / Prefill ----
+@router.get("/trips/{trip_id}/export")
+def export_trip(trip_id: str, db: DbDep, format: str = Query("json")):
+    from app.services.export.service import trip_to_export_dict, trip_to_ics
+
+    try:
+        if format == "ics":
+            ics = trip_to_ics(db, trip_id)
+            return Response(
+                content=ics,
+                media_type="text/calendar; charset=utf-8",
+                headers={"Content-Disposition": f'attachment; filename="trip-{trip_id}.ics"'},
+            )
+        data = trip_to_export_dict(db, trip_id)
+        return _ok(data)
+    except FlightHunterError as exc:
+        raise HTTPException(status_code=400, detail=exc.to_dict()) from exc
+
+
+class PrefillIn(BaseModel):
+    round_id: str
+    profile_id: str
+    user_approved_fields: dict[str, str] | None = None
+
+
+@router.post("/entries/prefill-plan")
+def prefill_plan(payload: PrefillIn, db: DbDep):
+    from app.services.browser.prefill import build_prefill_plan, plan_to_dict
+
+    round_ = db.get(CampaignRound, payload.round_id)
+    profile = db.get(Profile, payload.profile_id)
+    if round_ is None or profile is None:
+        raise HTTPException(status_code=404, detail="round or profile not found")
+    try:
+        plan = build_prefill_plan(
+            round_, profile, user_approved_fields=payload.user_approved_fields
+        )
+    except FlightHunterError as exc:
+        raise HTTPException(status_code=400, detail=exc.to_dict()) from exc
+    return _ok(plan_to_dict(plan))
+
+
+@router.get("/notifications")
+def notifications(db: DbDep, unread_only: bool = True, limit: int = Query(50, le=200)):
+    from app.services.notify.service import list_unread
+
+    if unread_only:
+        rows = list_unread(db, limit=limit)
+    else:
+        rows = db.scalars(
+            select(Notification).order_by(Notification.created_at_utc.desc()).limit(limit)
+        ).all()
+    return _ok(
+        [
+            {
+                "id": r.id,
+                "kind": r.kind,
+                "title": r.title,
+                "body": r.body,
+                "severity": r.severity,
+                "read": r.read,
+                "suppressed_reason": r.suppressed_reason,
+            }
+            for r in rows
+        ]
+    )
+
+
+@router.post("/scheduler/run-dry")
+def scheduler_run_dry(db: DbDep, settings: SettingsDep, limit: int = Query(10, le=50)):
+    from app.scheduler.jobs import run_due_scans
+
+    runs = run_due_scans(db, settings, dry_run=True, limit=limit)  # type: ignore[arg-type]
+    db.commit()
+    return _ok(
+        [
+            {
+                "id": r.id,
+                "task_type": r.task_type,
+                "status": r.status,
+                "dry_run": r.dry_run,
+                "result_summary": r.result_summary,
+            }
+            for r in runs
+        ]
+    )

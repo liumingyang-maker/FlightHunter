@@ -167,9 +167,7 @@ def test_cost_breakdown_unknown_fields():
     assert b.total_min == 2300
     assert "positioning" in b.unknown_fields
     assert b.total_max is None  # 未知项存在时不给假精确上界
-    b2 = compute_cost_breakdown(
-        base_ticket_total=2000, taxes=300, positioning=500, baggage=0
-    )
+    b2 = compute_cost_breakdown(base_ticket_total=2000, taxes=300, positioning=500, baggage=0)
     assert b2.total_min == 2800
     assert b2.total_max == 2800
 

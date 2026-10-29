@@ -49,9 +49,7 @@ def test_verify_needs_review_without_enough_evidence(db):
     org = Organizer(id=new_id(), name="O")
     db.add(org)
     db.flush()
-    camp = Campaign(
-        id=new_id(), organizer_id=org.id, program_key="pk1", name="C"
-    )
+    camp = Campaign(id=new_id(), organizer_id=org.id, program_key="pk1", name="C")
     db.add(camp)
     db.flush()
     r = CampaignRound(

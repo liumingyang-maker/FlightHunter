@@ -23,9 +23,7 @@ def notify(
 ) -> Notification | None:
     """写入站内提醒。相同 content_hash 不重复发送。"""
     ch = content_hash or sha256_text(f"{kind}|{title}|{entity_id}|{body[:200]}")
-    existing = session.scalar(
-        select(Notification).where(Notification.content_hash == ch)
-    )
+    existing = session.scalar(select(Notification).where(Notification.content_hash == ch))
     if existing:
         return existing
     if suppress_reason:
