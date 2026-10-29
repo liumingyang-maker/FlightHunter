@@ -58,7 +58,7 @@ class CampaignRound(Base, UUIDPk, TimestampMixin):
     edition_key: Mapped[str] = mapped_column(String(120), nullable=False)
     title: Mapped[str] = mapped_column(String(400), nullable=False)
     organizer_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    official_url: Mapped[str] = mapped_column(String(2000), nullable=False)
+    official_url: Mapped[str | None] = mapped_column(String(2000))
     prize_summary: Mapped[str | None] = mapped_column(Text)
     prize_value_min: Mapped[float | None] = mapped_column(Float)
     prize_value_max: Mapped[float | None] = mapped_column(Float)

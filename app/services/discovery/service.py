@@ -287,41 +287,32 @@ def materialize_raffle_candidates(
             )
             session.add(camp)
             session.flush()
-        # official_url 字段语义：此处是聚合页链接，仍写入但 verify_status=candidate
+        # official_url 仅在非聚合线索时写入；聚合 URL 存 notes
+        is_aggregator = source.kind in ("community", "search_api")
+        official = None if is_aggregator else (s.url or candidate_url or source.base_url)
         round_ = CampaignRound(
             id=new_id(),
             campaign_id=camp.id,
             edition_key="auto",
             title=title,
             organizer_name=org.name,
-            official_url=s.url or candidate_url or source.base_url,
+            official_url=official,
             prize_summary=s.raw_claim_text[:500] if s.raw_claim_text else None,
             verify_status="candidate",
             automation_policy="unknown",
             frequency="unknown",
             limit_scope="unknown",
             demo_only=False,
-            tags=json.dumps(
-                {
-                    "source_kind": source.kind,
-                    "aggregator": True,
-                    "prize_types": list(s.deal_types or []),
-                },
-                ensure_ascii=False,
-            )
-            if hasattr(CampaignRound, "tags")
-            else "[]",
         )
-        # CampaignRound 用 tags 字段（Text）
-        if hasattr(round_, "tags"):
-            round_.tags = json.dumps(
-                {
-                    "source_kind": source.kind,
-                    "aggregator": True,
-                    "prize_types": list(s.deal_types or []),
-                },
-                ensure_ascii=False,
-            )
+        round_.tags = json.dumps(
+            {
+                "source_kind": source.kind,
+                "aggregator": is_aggregator,
+                "source_list_url": s.url or candidate_url or source.base_url,
+                "prize_types": list(s.deal_types or []),
+            },
+            ensure_ascii=False,
+        )
         session.add(round_)
         created += 1
     session.flush()

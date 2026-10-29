@@ -21,19 +21,26 @@ async def attempt_official_evidence(
     失败时如实返回 error；不把聚合页当官方 verified。
     """
     url = round_.official_url
-    if not url:
+    source_list = None
+    if round_.tags:
+        try:
+            source_list = json.loads(round_.tags).get("source_list_url")
+        except Exception:
+            source_list = None
+    target = url or source_list
+    if not target:
         return {"ok": False, "reason": "no_url"}
     from app.core.url_safety import assert_public_http_url
 
     try:
-        assert_public_http_url(url)
+        assert_public_http_url(target)
     except Exception as exc:
         return {"ok": False, "reason": "unsafe_url", "message": str(exc)}
 
     from app.adapters.html_fetcher import HttpxFetchAdapter
 
     adapter = HttpxFetchAdapter(settings)
-    result = await adapter.fetch(url)
+    result = await adapter.fetch(target)
     if not result.ok:
         return {
             "ok": False,
@@ -48,10 +55,8 @@ async def attempt_official_evidence(
         entity_type="campaign_round",
         entity_id=round_.id,
         field_path="official_page_snapshot",
-        source_url=result.final_url or url,
-        source_kind="official_page"
-        if round_.verify_status == "verified"
-        else "third_party_reporting",
+        source_url=result.final_url or target,
+        source_kind="official_page" if url else "third_party_reporting",
         quote=(result.text or "")[:1500],
         retrieved_at_utc=now,
         content_hash=ch,
@@ -76,14 +81,33 @@ async def attempt_official_evidence_batch(
     *,
     limit: int = 5,
 ) -> list[dict]:
-    rounds = session.scalars(
+    """优先处理尚无 official_page 证据的候选，避免只刷前 N 条。"""
+    candidates = session.scalars(
         select(CampaignRound)
-        .where(CampaignRound.verify_status == "candidate", CampaignRound.demo_only == False)  # noqa: E712
-        .limit(limit)
+        .where(
+            CampaignRound.verify_status == "candidate",
+            CampaignRound.demo_only == False,  # noqa: E712
+        )
+        .order_by(CampaignRound.id)
     ).all()
     out = []
-    for r in rounds:
+    tried = 0
+    for r in candidates:
+        if tried >= limit:
+            break
+        existing_ev = session.scalar(
+            select(Evidence).where(
+                Evidence.entity_type == "campaign_round",
+                Evidence.entity_id == r.id,
+                Evidence.field_path == "official_page_snapshot",
+            )
+        )
+        if existing_ev:
+            continue
         res = await attempt_official_evidence(session, settings, r)
         out.append({"round_id": r.id, "title": r.title[:60], **res})
         session.flush()
+        tried += 1
+    if not out:
+        out.append({"note": "本轮无待溯源候选或均已尝试快照", "tried": 0})
     return out

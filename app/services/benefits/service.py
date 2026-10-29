@@ -321,7 +321,17 @@ def generate_guide(session: Session, offer_id: str) -> RedemptionGuide:
     claim_steps: list[str] = []
     use_steps: list[str] = []
 
-    if offer.claim_method == "PUBLIC_DISPLAY":
+    unverified_source = (
+        offer.official_url is None
+        or offer.date_certainty in ("unconfirmed", "not_yet_announced", "historical_reference")
+        or offer.offer_status in ("candidate", "needs_review")
+    )
+    if unverified_source:
+        warnings.append("来源/有效期未完成官方核实；以下为待核实线索步骤，不是已确认可领券")
+        claim_steps.append("【待核实】打开原始线索页面核对主办方与条款")
+        claim_steps.append("【待核实】在官方站点确认是否仍有效及如何领取；系统不会展示不存在的券码")
+        unknown.append("official_url" if offer.official_url is None else "date_certainty")
+    elif offer.claim_method == "PUBLIC_DISPLAY":
         claim_steps.append("打开官方页面查看/展示券码或打印优惠信息")
         claim_steps.append("无需创建账户领取；保存官方入口即可")
     elif offer.claim_method == "ACCOUNT_CLAIM":
@@ -334,7 +344,10 @@ def generate_guide(session: Session, offer_id: str) -> RedemptionGuide:
         claim_steps.append("按官方页面说明完成领取")
         unknown.append("claim_method 细节待核实")
 
-    use_steps.append("出行当日或商家允许的时段到店/下单")
+    if unverified_source:
+        use_steps.append("【待核实】确认官方使用期与门店后再使用；勿凭本说明消费")
+    else:
+        use_steps.append("出行当日或商家允许的时段到店/下单")
     if conditions.get("payment_network"):
         use_steps.append(f"结账时使用符合条件的支付网络：{conditions['payment_network']}")
     else:
