@@ -215,7 +215,7 @@ def execute_browser_entry(
                 receipt_code=None,
                 browser_ok=True,
                 message="模拟回执已忽略；正式活动需真实官网确认",
-                warnings=result.warnings + ["DEMO_RECEIPT_NOT_APPLIED"],
+                warnings=[*result.warnings, "DEMO_RECEIPT_NOT_APPLIED"],
                 requires_human=["请在真实官网完成报名并人工标记"],
             )
         if attempt.status != "submitting":
