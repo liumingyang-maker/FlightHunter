@@ -428,8 +428,10 @@ def extract_route_price_candidates(label: str) -> list[dict[str, Any]]:
         r"台北|台湾|台中|高雄|香港|澳门|上海|北京|成都|重庆|广州|深圳|杭州|武汉|昆明)"
     )
     price_pat = r"(MOP\$?\s*|HK\$?\s*|¥\s*|RMB\s*|US\$?\s*)(\d[\d,]{2,})"
-    # dest 后价格
-    for m in re.finditer(dest_pat + r"[^\dA-Za-z]{0,24}?" + price_pat, label, re.I):
+    # 间隔仅允许空白/标点 —— 禁止跨过「出发」等汉字（否则香港出发 台湾 HK$ 会错绑香港）
+    gap = r"[\s·.、,，:：\-–—/|]{0,8}"
+    # dest 后紧邻价格
+    for m in re.finditer(dest_pat + gap + price_pat, label, re.I):
         try:
             amt = float(m.group(3).replace(",", ""))
         except ValueError:
@@ -439,8 +441,12 @@ def extract_route_price_candidates(label: str) -> list[dict[str, Any]]:
         if re.search(r"最高減|最多減|立省|立減|up to|save ", window, re.I):
             continue
         out.append({"dest_city": m.group(1), "amount": amt, "currency": cur})
-    # 价格后 dest
-    for m in re.finditer(price_pat + r"[^\dA-Za-z]{0,16}?" + dest_pat, label, re.I):
+    # 价格后紧邻 dest：仅当 dest 后**没有**紧跟另一价格（避免 HK$800 · 大阪 HK$1500 误绑大阪=800）
+    for m in re.finditer(
+        price_pat + gap + dest_pat + r"(?!" + gap + price_pat + r")",
+        label,
+        re.I,
+    ):
         try:
             amt = float(m.group(2).replace(",", ""))
         except ValueError:
@@ -454,14 +460,26 @@ def extract_route_price_candidates(label: str) -> list[dict[str, Any]]:
             continue
         out.append({"dest_city": city, "amount": amt, "currency": cur})
     dests = set(re.findall(dest_pat, label, re.I))
-    # 多目的地：每条路线必须有自己的价；不完整则全部丢弃
-    if len(dests) >= 2:
+    # 「X出发」中的 X 是出发地
+    origin_ctx = set(
+        re.findall(
+            r"(香港|澳門|澳门|上海|北京|成都|重庆|广州|深圳|杭州|武汉|昆明|Hong\s*Kong)"
+            r"(?=\s*(?:出发|起飞|→|->|from))",
+            label,
+            re.I,
+        )
+    )
+    if any("hong" in o.lower() or "kong" in o.lower() for o in origin_ctx):
+        origin_ctx.add("香港")
+    dest_only = {d for d in dests if d not in origin_ctx}
+    if len(dest_only) >= 2:
         bound = {c["dest_city"] for c in out}
-        if not dests.issubset(bound) or len(out) < len(dests):
+        if not dest_only.issubset(bound) or len(out) < len(dest_only):
             return []
-        # 金额互不相同的多路线：调用方不得写单一 reported_total
         if len({c["amount"] for c in out}) > 1:
-            return out  # 保留结构化；调用方 multi_route=True
+            return out
+    # 单目的地不得把出发地当价绑定目标
+    out = [c for c in out if c["dest_city"] not in origin_ctx] or out
     return out
 
 
