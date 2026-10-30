@@ -94,7 +94,7 @@ def create_trip(session: Session, settings: Settings, payload: TripCreate) -> Tr
 
 
 def confirm_trip(session: Session, settings: Settings, trip_id: str) -> Trip:
-    """用户确认真实行程 → 启动正式扫描（demo 不可确认正式扫描）。"""
+    """用户确认真实行程 → 启动正式扫描（demo 不可确认正式扫描）；幂等恢复旧订阅。"""
     trip = session.get(Trip, trip_id)
     if trip is None:
         raise NotFoundError("行程不存在")
@@ -105,6 +105,14 @@ def confirm_trip(session: Session, settings: Settings, trip_id: str) -> Trip:
     if not trip.scan_registered:
         register_trip_scans(session, settings, trip)
         trip.scan_registered = True
+    # N-007：确认后恢复因未确认停用的订阅（不覆盖 cancelled 等其它原因）
+    for sub in session.scalars(
+        select(TripScanSubscription).where(TripScanSubscription.trip_id == trip.id)
+    ).all():
+        if not sub.enabled and sub.paused_reason in (None, "", "trip_not_confirmed"):
+            if settings.trip_monitoring.enabled:
+                sub.enabled = True
+                sub.paused_reason = None
     session.flush()
     rematch_trip_benefits(session, trip)
     session.flush()

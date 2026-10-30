@@ -722,15 +722,17 @@ def raffle_multi_round_check(
         from app.services.raffle.evidence_extract import extract_official_evidence
 
         async def _fetch_bytes(u: str) -> bytes:
-            import httpx
+            from app.core.safe_http import safe_get
 
-            r = httpx.get(
+            r = await safe_get(
                 u,
                 headers={"User-Agent": "FlightHunter-Bot/1.0 (evidence extract)"},
                 timeout=40,
-                follow_redirects=True,
+                check_robots=True,
+                max_bytes=12_000_000,
             )
-            r.raise_for_status()
+            if not r.ok or r.content is None:
+                raise RuntimeError(r.error or "fetch_bytes_failed")
             return r.content
 
         ext = asyncio.run(

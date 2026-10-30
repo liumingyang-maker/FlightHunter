@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -98,19 +99,22 @@ def discover_official_tourism_events(
                 confidence="low",
             )
         )
-    # 2) AJAX 列表端点
+    # 2) AJAX 列表端点（N-001/002：走 safe_get，禁 follow_redirects 私网）
     try:
+        from app.core.safe_http import safe_get_sync
+
         headers = {
-            "User-Agent": "FlightHunter-Bot/1.0 (local live research)",
             "X-Requested-With": "XMLHttpRequest",
             "Referer": page_url,
         }
         for page in range(1, 4):
             u = list_url if page == 1 else (list_url + ("&" if "?" in list_url else "?") + f"page={page}")
-            resp = httpx.get(u, headers=headers, timeout=20, follow_redirects=True)
-            if resp.status_code != 200:
+            resp = safe_get_sync(u, headers=headers, timeout=20, check_robots=True)
+            if not resp.ok or not resp.text:
                 break
-            data = resp.json()
+            import json as _json
+
+            data = _json.loads(resp.text)
             items = (data.get("data") or {}).get("contents") or []
             if not items:
                 break
@@ -448,17 +452,36 @@ def materialize_raffle_candidates(
         )
         if existing_round:
             continue
-        # P2：中国内地出境适用性（出发地不明=待核实）
+        # P2/N-016：中国内地出境适用性（出发地不明=待核实）；仅官方证据可正向核心推荐
         china_outbound = None
         core_recommend = False
         title_l = (title or "").lower()
+        title_z = title or ""
         if category == "other_giveaway" and any(
             k in title_l for k in ("cash", "car", "truck", "vehicle", "gift card")
         ):
             china_outbound = "not_travel_ticket"
         elif category == "flight_giveaway":
             china_outbound = "unknown_origin_pending"
-            core_recommend = False
+            # N-016 正向路径：官方源 + 明确中国内地出境/出发表述才可核心推荐
+            official_src = source.kind == "official_tourism_board" or (
+                s.url
+                and "aggregator" not in (source.kind or "")
+                and source.kind in ("official_airline", "official_carrier", "official_event")
+            )
+            explicit_cn = bool(
+                re.search(
+                    r"(中国内地|内地出发|中国大陆|China\s+mainland|from\s+Mainland\s+China|"
+                    r" mainland\s+China\s+departures|中国出发)",
+                    title_z,
+                    re.I,
+                )
+            )
+            if official_src and explicit_cn:
+                china_outbound = "confirmed_mainland_outbound"
+                core_recommend = True
+            else:
+                core_recommend = False
         elif category == "travel_package_unknown_air":
             china_outbound = "package_unknown_air_pending"
             core_recommend = False

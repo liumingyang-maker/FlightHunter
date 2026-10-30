@@ -345,6 +345,11 @@ def fare_intel(
         "my_origin",
         description="my_origin|china_mainland|hk_mo|global_error",
     ),
+    destination: str | None = Query(None, description="IATA or city keyword filter"),
+    category: str | None = Query(None, description="suspected_bug_fare|official_or_flash_promo|..."),
+    date_from: str | None = Query(None, description="YYYY-MM-DD travel/publish lower bound"),
+    date_to: str | None = Query(None, description="YYYY-MM-DD upper bound"),
+    feedback: str | None = Query(None, description="bookmarked|useful|ignore"),
 ):
     """P1 四频道情报（统一库；无实时报价依赖）。"""
     from app.services.airports.china import expand_origin_selection
@@ -378,14 +383,23 @@ def fare_intel(
         exclude_domestic=channel != "global_error",
     )
     # 全球错价：不过滤城市匹配
-    rows = build_intel_view(db, filt, limit=max(limit, 60))
+    rows = build_intel_view(db, filt, limit=max(limit, 80))
     routed = filter_for_channel(
         rows,
         channel,
         prefs,
     )
-    primary = routed["primary"][:limit]
-    folded = routed["folded"][:20]
+    primary = routed["primary"]
+    folded = routed["folded"]
+    # N-018：目的地 / 类别 / 时间 / 反馈筛选（未知项不会被误当作已匹配）
+    primary = _apply_intel_filters(
+        primary, destination=destination, category=category, date_from=date_from, date_to=date_to, feedback=feedback
+    )
+    folded = _apply_intel_filters(
+        folded, destination=destination, category=category, date_from=date_from, date_to=date_to, feedback=feedback
+    )
+    primary = primary[:limit]
+    folded = folded[:20]
     return _ok(
         {
             "channel": channel,
@@ -399,8 +413,76 @@ def fare_intel(
             "folded": folded,
             "mode": "intel_no_live_quote",
             "same_signal_id_across_channels": True,
+            "filters": {
+                "destination": destination,
+                "category": category,
+                "date_from": date_from,
+                "date_to": date_to,
+                "feedback": feedback,
+            },
         }
     )
+
+
+def _apply_intel_filters(
+    rows: list[dict],
+    *,
+    destination: str | None,
+    category: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    feedback: str | None,
+) -> list[dict]:
+    """结构化筛选：缺失字段在指定过滤时排除（不误作匹配）。"""
+    from datetime import datetime
+
+    out = rows
+    if destination:
+        d = destination.strip().upper()
+        dl = destination.strip().lower()
+
+        def dest_match(it: dict) -> bool:
+            code = (it.get("destination_airport") or "").upper()
+            title = (it.get("title") or "").lower()
+            return bool(code and code == d) or bool(dl and dl in title)
+
+        out = [it for it in out if dest_match(it)]
+    if category:
+        cat = category.strip()
+        out = [it for it in out if (it.get("category") or "") == cat]
+    if feedback:
+        fb = feedback.strip()
+        out = [it for it in out if (it.get("user_feedback") or "") == fb]
+
+    def _parse_dt(s: str | None):
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    dfrom = _parse_dt(date_from)
+    dto = _parse_dt(date_to)
+    if dfrom or dto:
+
+        def time_ok(it: dict) -> bool:
+            # 用 published_at 优先，否则 found_at；都缺则过滤时不匹配
+            raw = it.get("published_at") or it.get("found_at")
+            dt = _parse_dt(raw if isinstance(raw, str) else None)
+            if dt is None and not isinstance(raw, str):
+                # 可能已是 datetime 字符串化
+                dt = _parse_dt(str(raw) if raw else None)
+            if dt is None:
+                return False
+            if dfrom and dt.date() < dfrom.date():
+                return False
+            if dto and dt.date() > dto.date():
+                return False
+            return True
+
+        out = [it for it in out if time_ok(it)]
+    return out
 
 
 @router.post("/fare/intel/{signal_id}/feedback")

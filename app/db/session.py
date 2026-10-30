@@ -42,21 +42,87 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
 
+def check_alembic_head(settings: Settings) -> dict:
+    """N-017：报告迁移版本；create_all ≠ 迁移。正式库升级需用户授权。"""
+    from pathlib import Path as _P
+
+    path = sqlite_path(settings)
+    out = {"db_path": str(path), "exists": path.exists(), "alembic_version": None, "head": None, "ok": True}
+    try:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        root = _P(__file__).resolve().parents[1]
+        cfg = Config(str(root / "alembic.ini")) if (root / "alembic.ini").exists() else Config()
+        cfg.set_main_option("script_location", str(root / "alembic"))
+        script = ScriptDirectory.from_config(cfg)
+        out["head"] = script.get_current_head()
+    except Exception as exc:
+        out["head_error"] = str(exc)
+    if path.exists():
+        try:
+            from sqlalchemy import create_engine, text
+
+            eng = create_engine(f"sqlite+pysqlite:///{path.as_posix()}", future=True)
+            with eng.connect() as conn:
+                has = conn.execute(
+                    text("SELECT name FROM sqlite_master WHERE type='table' AND name='alembic_version'")
+                ).fetchone()
+                if has:
+                    row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+                    out["alembic_version"] = row[0] if row else None
+                else:
+                    out["alembic_version"] = None
+            eng.dispose()
+        except Exception as exc:
+            out["ok"] = False
+            out["error"] = str(exc)
+    return out
+
+
+def ensure_migrations_or_warn(settings: Settings) -> dict:
+    """启动/CLI 用：新库 create_all；旧库若无版本表给出升级指导（不自动改正式库）。"""
+    report = check_alembic_head(settings)
+    path = sqlite_path(settings)
+    if not path.exists():
+        return {**report, "action": "create_all_new_db"}
+    if report.get("alembic_version") is None and report.get("head"):
+        # 旧库无版本表：仅当用户配置允许才自动升级（默认不碰正式库）
+        if getattr(settings, "allow_auto_migrate", False):
+            try:
+                from alembic import command
+                from alembic.config import Config as _Cfg
+
+                root = Path(__file__).resolve().parents[1]
+                ini = root / "alembic.ini"
+                cfg = _Cfg(str(ini)) if ini.exists() else _Cfg()
+                cfg.set_main_option("script_location", str(root / "alembic"))
+                cfg.set_main_option("sqlalchemy.url", f"sqlite+pysqlite:///{path.as_posix()}")
+                command.upgrade(cfg, "head")
+                return {**check_alembic_head(settings), "action": "migrated"}
+            except Exception as exc:
+                return {**report, "action": "migrate_failed", "error": str(exc)}
+        return {
+            **report,
+            "action": "needs_migration",
+            "hint": "python -m alembic upgrade head  # 请先备份 data/ 正式库再执行",
+        }
+    return {**report, "action": "ok"}
+
+
 def init_db(engine: Engine) -> None:
-    """创建全部表（开发/测试用）；并尝试放宽旧库 official_url NOT NULL。"""
+    """创建全部表（开发/测试用）；create_all 不替代 Alembic 迁移。"""
     Base.metadata.create_all(engine)
     try:
         from sqlalchemy import text
 
         with engine.connect() as conn:
-            # 旧库可能仍为 NOT NULL：SQLite 无法简单 ALTER，跳过并记录
             row = conn.execute(
                 text(
                     "SELECT sql FROM sqlite_master WHERE type='table' AND name='campaign_rounds'"
                 )
             ).fetchone()
             if row and "official_url" in (row[0] or "") and "NOT NULL" in (row[0] or ""):
-                # 提示性：新写入用空串兼容，代码侧 official 可为 None 但需列 nullable
                 pass
             conn.commit()
     except Exception:

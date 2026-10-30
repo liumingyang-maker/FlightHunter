@@ -4,10 +4,12 @@
 - console → recorded（仅记录）
 - toast success → toast_delivered
 - 仅当 toast/远程成功时才可标 delivered 外送
+- N-010：事件键；成功幂等；失败限次重试（进程内 + body 标记）
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from typing import Any
@@ -17,6 +19,10 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.models import Notification
 from app.services.notify.service import notify
+
+# 进程内送达状态（重启后靠 body 前缀恢复；不依赖 schema 迁移）
+_DELIVERY_STATE: dict[str, dict[str, Any]] = {}
+MAX_DELIVERY_ATTEMPTS = 3
 
 
 def deliver_windows_toast(title: str, body: str) -> dict[str, Any]:
@@ -66,6 +72,12 @@ def deliver_console(title: str, body: str) -> dict[str, Any]:
     return {"channel": "console", "status": "recorded"}
 
 
+def _event_key(kind: str, title: str, entity_type: str | None, entity_id: str | None) -> str:
+    return hashlib.sha256(
+        f"{kind}|{title}|{entity_type or ''}|{entity_id or ''}".encode("utf-8")
+    ).hexdigest()[:24]
+
+
 def send_notification(
     session: Session,
     settings: Settings | None = None,
@@ -77,7 +89,10 @@ def send_notification(
     entity_type: str | None = None,
     entity_id: str | None = None,
     try_toast: bool = True,
+    event_key: str | None = None,
 ) -> Notification | None:
+    """外送：事件键 + 渠道状态；成功幂等抑制，失败可限次重试。"""
+    key = event_key or _event_key(kind, title, entity_type, entity_id)
     n = notify(
         session,
         kind=kind,
@@ -87,19 +102,54 @@ def send_notification(
         entity_type=entity_type,
         entity_id=entity_id,
     )
-    if n is None or n.suppressed_reason:
+    if n is None:
         return n
-    # D-009/N-010：标记放在 body 开头，避免长正文截断丢失
-    if "[D]" in (n.body or "")[:20]:
+    if n.suppressed_reason:
+        return n
+
+    state = _DELIVERY_STATE.get(key) or {}
+    # 从 body 前缀恢复（跨进程）
+    prefix = (n.body or "")[:40]
+    if "[D:ok" in prefix or "[D:skip" in prefix:
+        if "[D]" not in (n.body or "")[:24]:
+            n.body = "[D][skip_dup]" + (n.body or "")[:3980]
+            session.flush()
+        return n
+    if prefix.startswith("[D:fail"):
+        try:
+            # [D:fail:a3:k24]
+            parts = prefix[3:].split("]")
+            meta = parts[0].split(":")
+            state = {
+                "status": "failed",
+                "attempts": int(meta[1]) if len(meta) > 1 and meta[1].isdigit() else 1,
+            }
+        except Exception:
+            state = {"status": "failed", "attempts": 1}
+
+    attempts = int(state.get("attempts") or 0)
+    if state.get("status") == "toast_delivered":
         n.body = "[D][skip_dup]" + (n.body or "")[:3980]
+        session.flush()
+        return n
+    if state.get("status") == "failed" and attempts >= MAX_DELIVERY_ATTEMPTS:
+        n.body = "[D][retry_exhausted]" + (n.body or "")[:3980]
+        _DELIVERY_STATE[key] = {**state, "status": "exhausted"}
         session.flush()
         return n
 
     deliveries = [deliver_console(title, body)]
     if try_toast:
         deliveries.append(deliver_windows_toast(title, body))
-    note = "[D]" + json.dumps(deliveries, ensure_ascii=False)[:200]
-    n.body = (note + "\n" + (n.body or ""))[:4000]
+    ok = external_delivery_ok(deliveries)
+    attempts += 1
+    if ok or not try_toast:
+        _DELIVERY_STATE[key] = {"status": "toast_delivered" if ok else "recorded", "attempts": attempts}
+        note = "[D]" + json.dumps(deliveries, ensure_ascii=False)[:200]
+        n.body = (note + "\n" + (n.body or ""))[:4000]
+    else:
+        _DELIVERY_STATE[key] = {"status": "failed", "attempts": attempts}
+        n.body = (f"[D:fail:a{attempts}:k{key}]" + (n.body or ""))[:4000]
     session.flush()
     return n
 

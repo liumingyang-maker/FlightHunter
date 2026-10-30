@@ -29,6 +29,36 @@
     <label class="chip"><input type="checkbox" id="hide_expired" checked> 隐藏过期</label>
     <span id="origin-status" class="muted"></span>
   </div>
+  <div class="origin-row" style="margin-top:10px">
+    <label class="chip">目的地
+      <input type="text" id="f-dest" placeholder="IATA 或城市" style="width:7em;border:1px solid #ccc;border-radius:4px;padding:4px 6px" />
+    </label>
+    <label class="chip">类别
+      <select id="f-cat" style="border:1px solid #ccc;border-radius:4px;padding:4px 6px">
+        <option value="">全部</option>
+        <option value="suspected_bug_fare">疑似错价</option>
+        <option value="fuel_anomaly">漏油</option>
+        <option value="official_or_flash_promo">官方/限时促销</option>
+        <option value="community_deal_tip">社区爆料</option>
+        <option value="mileage_promo">里程促销</option>
+        <option value="other_intl_deal">其他国际优惠</option>
+      </select>
+    </label>
+    <label class="chip">发布/发现起
+      <input type="date" id="f-from" style="border:1px solid #ccc;border-radius:4px;padding:3px 6px" />
+    </label>
+    <label class="chip">止
+      <input type="date" id="f-to" style="border:1px solid #ccc;border-radius:4px;padding:3px 6px" />
+    </label>
+    <label class="chip">反馈
+      <select id="f-fb" style="border:1px solid #ccc;border-radius:4px;padding:4px 6px">
+        <option value="">全部</option>
+        <option value="bookmarked">已收藏</option>
+        <option value="useful">有用</option>
+        <option value="ignore">忽略</option>
+      </select>
+    </label>
+  </div>
 </section>
 
 <section class="card">
@@ -79,6 +109,11 @@
     hkg: false,
     mfm: false,
     hide_expired: true,
+    dest: "",
+    cat: "",
+    date_from: "",
+    date_to: "",
+    fb: "",
   };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -102,6 +137,11 @@
     $("hkg").checked = !!state.hkg;
     $("mfm").checked = !!state.mfm;
     $("hide_expired").checked = state.hide_expired !== false;
+    if ($("f-dest")) $("f-dest").value = state.dest || "";
+    if ($("f-cat")) $("f-cat").value = state.cat || "";
+    if ($("f-from")) $("f-from").value = state.date_from || "";
+    if ($("f-to")) $("f-to").value = state.date_to || "";
+    if ($("f-fb")) $("f-fb").value = state.fb || "";
   }
 
   function readUI() {
@@ -110,6 +150,11 @@
     state.hkg = $("hkg").checked;
     state.mfm = $("mfm").checked;
     state.hide_expired = $("hide_expired").checked;
+    state.dest = ($("f-dest").value || "").trim();
+    state.cat = $("f-cat").value || "";
+    state.date_from = $("f-from").value || "";
+    state.date_to = $("f-to").value || "";
+    state.fb = $("f-fb").value || "";
   }
 
   function esc(s) {
@@ -212,6 +257,11 @@
       if (state.mfm) q.set("include_mfm", "1");
     }
     q.set("hide_expired", state.hide_expired ? "1" : "0");
+    if (state.dest) q.set("destination", state.dest);
+    if (state.cat) q.set("category", state.cat);
+    if (state.date_from) q.set("date_from", state.date_from);
+    if (state.date_to) q.set("date_to", state.date_to);
+    if (state.fb) q.set("feedback", state.fb);
     $("origin-status").textContent = "加载中…";
     try {
       const r = await fetch("/api/v1/fare/intel?" + q.toString(), { credentials: "same-origin" });
@@ -243,6 +293,12 @@
   $("btn-reset").addEventListener("click", () => {
     state.codes = ["CKG","TFU","CTU"];
     state.nationwide = false; state.hkg = false; state.mfm = false;
+    state.dest = ""; state.cat = ""; state.date_from = ""; state.date_to = ""; state.fb = "";
+    if ($("f-dest")) $("f-dest").value = "";
+    if ($("f-cat")) $("f-cat").value = "";
+    if ($("f-from")) $("f-from").value = "";
+    if ($("f-to")) $("f-to").value = "";
+    if ($("f-fb")) $("f-fb").value = "";
     renderChips();
     load();
   });

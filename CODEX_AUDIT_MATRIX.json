@@ -1,0 +1,440 @@
+{
+  "source_sha": "ac0c447fc33db1c011f1d443560f495f5ac4298e",
+  "branch": "develop",
+  "remote": "https://github.com/liumingyang-maker/FlightHunter",
+  "codex_model": "OpenAI Codex; exact model identifier not exposed",
+  "environment": {
+    "os": "Windows, PowerShell 7",
+    "limits": "没有读取 data/ 私有 DB、auth 文件或 Worker 状态；仅抽查 app 关键路径，非逐行全面代码安全审查；浏览器外部页面受限但 git ls-remote 成功"
+  },
+  "requirements": [
+    {
+      "id": "BASE",
+      "title": "版本与范围",
+      "status": "PASS",
+      "evidence": [
+        "git ls-remote origin refs/heads/develop = ac0c447fc33db1c011f1d443560f495f5ac4298e",
+        "git rev-parse HEAD = ac0c447fc33db1c011f1d443560f495f5ac4298e",
+        "git diff --stat 15c123c HEAD -- app tests 无输出"
+      ],
+      "notes": "业务代码与上轮 15c123c 相同；审计提交 ac0c447，远端可能后续变化。"
+    },
+    {
+      "id": "P1-CHANNELS",
+      "title": "四频道准确分流",
+      "status": "FAIL",
+      "evidence": [
+        "上海→香港误匹配 HKG；真实 HK Express 价格航线错配",
+        "上轮 Edge 隔离测试全球频道不带偏好"
+      ],
+      "notes": "不是空频道本身导致 FAIL。"
+    },
+    {
+      "id": "P1-SOURCE",
+      "title": "来源及真实发现",
+      "status": "PARTIAL",
+      "evidence": [
+        "本次 FlyNext HTTP 200 解析 4，隔离视图港澳 3",
+        "docs/FARE_SOURCE_REGISTRY.md",
+        "app/db/session.py"
+      ],
+      "notes": "未审计全部来源实时可用性；旧来源诊断及 403 只是历史证据。"
+    },
+    {
+      "id": "P1-TIME",
+      "title": "发布时间与来源证据",
+      "status": "FAIL",
+      "evidence": [
+        "本次合成旅行日期→published_at",
+        "本次 FlyNext 三个样本 published_at=None"
+      ],
+      "notes": "发布时间未知不得替代为发现时间。"
+    },
+    {
+      "id": "P1-MERGE",
+      "title": "跨源合并及通知",
+      "status": "PARTIAL",
+      "evidence": [
+        "15c123c 同代码既有隔离复验三站改写为 2 组",
+        "本次长通知模拟重复"
+      ],
+      "notes": "采用保守归并，不要求本轮引入不可信全自动实体 ID。"
+    },
+    {
+      "id": "P1-UI",
+      "title": "筛选与反馈",
+      "status": "PARTIAL",
+      "evidence": [
+        "app/web/templates/fare.html",
+        "app/web/routes/api.py:339"
+      ],
+      "notes": "出发地/隐藏过期有控件；目的地、类别、出行时间和完整反馈未闭环。"
+    },
+    {
+      "id": "P2-HONESTY",
+      "title": "抽奖规则、资格及中国出境",
+      "status": "FAIL",
+      "evidence": [
+        "本次合成档案缺居住或国籍→eligible",
+        "app/web/templates/campaigns.html:24",
+        "app/services/discovery/service.py:453"
+      ],
+      "notes": "合成 CLI 资格错误不等同真实用户资格 API 已产生错误；核心推荐无正向实现。"
+    },
+    {
+      "id": "P3-GATE",
+      "title": "未确认行程扫描门槛",
+      "status": "PASS",
+      "evidence": [
+        "上一轮 15c123c 同代码内存复验，未确认编辑后无到期订阅",
+        "app/scheduler/jobs.py:53"
+      ],
+      "notes": "原绕过已阻断；仍有 confirmed 行程被停扫回归，见 P3-LIFECYCLE。"
+    },
+    {
+      "id": "P3-LIFECYCLE",
+      "title": "确认/编辑/取消/恢复",
+      "status": "FAIL",
+      "evidence": [
+        "上轮 15c123c 同代码隔离复验 auto_scan_on_trip_change=false 导致已确认订阅停用",
+        "历史错误订阅确认后仍禁用"
+      ],
+      "notes": "真实用户数据库和真实扫描未触碰。"
+    },
+    {
+      "id": "SEC-FETCH",
+      "title": "网络与 SSRF 安全",
+      "status": "FAIL",
+      "evidence": [
+        "MockTransport 证明入口与 OCR 公开 URL 302 跟随到 127.0.0.1",
+        "app/core/url_safety.py:assert_public_http_url"
+      ],
+      "notes": "未向真实内网发送请求，主 HttpxFetchAdapter 的防护不覆盖这些直连路径。"
+    },
+    {
+      "id": "SEC-XSS",
+      "title": "情报页 XSS 防护",
+      "status": "PARTIAL",
+      "evidence": [
+        "上轮同代码 Edge 本地隔离 mock API 测试：恶意标题未执行、危险协议被过滤"
+      ],
+      "notes": "不是全站、真实 DB 注入到页面链路或公开部署完整安全验证。"
+    },
+    {
+      "id": "COMPLIANCE",
+      "title": "公开获取与禁止外站提交",
+      "status": "PARTIAL",
+      "evidence": [
+        "app/adapters/html_fetcher.py fail-closed robots",
+        "app/services/browser/playwright_exec.py remote submit gate",
+        "其他 httpx 直连未走 robots"
+      ],
+      "notes": "未进行真实报名、CAPTCHA 绕过或付款。"
+    },
+    {
+      "id": "RUNTIME",
+      "title": "稳定、备份、迁移",
+      "status": "PARTIAL",
+      "evidence": [
+        "228 unit passed 1 warning 11.70s",
+        "docs/DAILY_RUNTIME_STATUS.md 历史 72h 未达到",
+        "app/db/session.py:init_db"
+      ],
+      "notes": "未读取私库，未测生产恢复或升级。"
+    },
+    {
+      "id": "V1-104",
+      "title": "完整 V1 104 项验收",
+      "status": "NOT_TESTED",
+      "evidence": [
+        "docs/REQUIREMENTS_MATRIX.md"
+      ],
+      "notes": "重点审核、代码抽查和部分隔离执行，不构成逐项 104 项验收。"
+    },
+    {
+      "id": "PUBLIC",
+      "title": "公网技术安全上线",
+      "status": "NOT_TESTED",
+      "evidence": [
+        "当前产品定位个人本地优先",
+        "未进行外网部署、威胁建模或渗透"
+      ],
+      "notes": "不作为本轮必须功能，公开上线准备结论为 NO。"
+    }
+  ],
+  "defects": [
+    {
+      "id": "N-001",
+      "severity": "P1",
+      "title": "入口探测和图片 OCR 的重定向可到达内网",
+      "location": "app/services/raffle/auto_verify.py:99; app/services/raffle/evidence_extract.py:226; app/cli.py:727; app/services/discovery/service.py:110; app/services/fare/intel.py:700",
+      "evidence": "httpx MockTransport 中 public.example 302→127.0.0.1，入口探测与 OCR 两条路径均跟随，入口返回 ok；无真实内网访问。初始 hostname 校验默认不解析 DNS，且 follow_redirects=True。",
+      "impact": "受控外部页面或重定向可诱导服务访问本机或内网；其他直连路径需分别核查。",
+      "recommendation": "统一安全 HTTP 客户端：每跳 URL/DNS/站点策略校验，禁止非公网，限制大小与跳转；防 DNS 重绑定要将校验结果与连接绑定并保留 TLS 主机验证，避免只在请求前解析一次。"
+    },
+    {
+      "id": "N-002",
+      "severity": "P1",
+      "title": "多个读取路径绕过统一 robots 安全策略",
+      "location": "app/services/raffle/auto_verify.py:120; app/services/discovery/service.py:110; app/services/raffle/evidence_extract.py:230",
+      "evidence": "入口 probe、AJAX 列表、OCR 图片直接使用 httpx，未调用 HttpxFetchAdapter 的 robots 路径；代码审查。",
+      "impact": "来源主页面允许不等于其子路径、图片或重定向目标允许，可能违反项目自动化边界。",
+      "recommendation": "所有自动抓取复用同一合规客户端；每站 403/429/CAPTCHA/robots 按状态停抓，不得绕过。"
+    },
+    {
+      "id": "N-003",
+      "severity": "P1",
+      "title": "目的地及航司品牌误识别为出发地",
+      "location": "app/services/fare/intel.py:292; app/services/fare/channels.py:route_channels",
+      "evidence": "隔离执行：上海→香港 机票促销→[PVG,HKG]，经 build_intel_view 在 HKG 偏好进入我的出发地主列表；Peach 大阪→首尔→[HKG]。",
+      "impact": "误导偏好匹配或错归港澳。",
+      "recommendation": "优先方向明确的地点和 IATA；目的地与航司名不作为出发证据。品牌只能作来源上下文弱提示，不满足明确匹配；未知归 unknown。"
+    },
+    {
+      "id": "N-004",
+      "severity": "P1",
+      "title": "多目的地价格与航线错误绑定",
+      "location": "app/adapters/html_fetcher.py:457; app/services/fare/intel.py:380",
+      "evidence": "2026-10-30 本次 FlyNext 首页只读 200，四信号隔离物化：HK Express 台湾 HK$800、大阪 HK$1500 的文章被视图输出为 HKG→KIX HKD 800。",
+      "impact": "给消费者错误的大阪报价，不能认为是实时可买价格。",
+      "recommendation": "用路线级候选或保留多目的地汇总，只有金额与目的地绑定证据充分才展示路线级价格；不明确则金额/目的地为 unknown 并保留原文。"
+    },
+    {
+      "id": "N-005",
+      "severity": "P1",
+      "title": "减免词绕过导致优惠额冒充票价",
+      "location": "app/adapters/html_fetcher.py:482",
+      "evidence": "香港大阪機票立省HK$800→reported_total=800 HKD；最多減样例返回 None。",
+      "impact": "用户把折扣额误认成机票价。",
+      "recommendation": "明确区分票价、减免、门槛、积分、行李及税费；未知语义不要写 reported_total，并覆盖简繁中英文变体。"
+    },
+    {
+      "id": "N-006",
+      "severity": "P1",
+      "title": "旅行日期可被写入发布日期",
+      "location": "app/adapters/html_fetcher.py:215",
+      "evidence": "合成列表「旅行日期 2027年2月3日」→published_at 2027-02-03；含 HK$1600 和明确發布 2026-10-29 的另一条 published_at=None。",
+      "impact": "时间排序、过期判断会失真，旧文可能被伪装成近期发布。",
+      "recommendation": "只解析有明确发布日期标签/RSS 字段的时间，使用来源时区；分别保存发现、发布、销售、旅行时间及证据，未知不回填。"
+    },
+    {
+      "id": "N-007",
+      "severity": "P1",
+      "title": "已确认行程在关闭编辑重扫后被停用",
+      "location": "app/services/trips/service.py:103; app/services/trips/service.py:221",
+      "evidence": "隔离内存：confirmed=true 且已有 enabled 订阅，auto_scan_on_trip_change=false 后编辑标签，订阅变 disabled，paused_reason=trip_not_confirmed；历史 disabled 订阅确认后仍不恢复。",
+      "impact": "真实用户已确认行程可能停止福利监控。",
+      "recommendation": "区分未确认与不触发重扫；确认动作幂等恢复符合政策的旧订阅；由调度器二次拦截未确认及 demo。"
+    },
+    {
+      "id": "N-008",
+      "severity": "P1",
+      "title": "社区促销被归为官方促销",
+      "location": "app/services/fare/intel.py:447; app/web/templates/fare.html:130",
+      "evidence": "合成 source_type=community、deal_types=[flash_sale]，classify_signal 返回 official_or_flash_promo；界面显示官方/限时促销。",
+      "impact": "促销性质和来源权威被混淆，降低证据诚实度。",
+      "recommendation": "来源可信度与促销类别分字段，社区转述标社区线索，仅直接官方证据才能标官方。"
+    },
+    {
+      "id": "N-009",
+      "severity": "P2",
+      "title": "抽奖资格缺一个关键档案仍返回 eligible",
+      "location": "app/services/raffle/multi_round.py:580; app/cli.py:775",
+      "evidence": "合成规则同时要求非韩国公民且不住韩国，purchase_required=false、age=30、nationality=CN、residence=None→eligible；反向缺 nationality 同样 eligible。该函数用于合成档案 CLI 路径。",
+      "impact": "合成验证输出过度断言，可能误导审核；本次未证明真实用户资格 API 走此函数。",
+      "recommendation": "每项规则拆开判断，任一必需档案缺失则 unknown；年龄阈值必须来自规则证据，不固定假定 18。"
+    },
+    {
+      "id": "N-010",
+      "severity": "P2",
+      "title": "失败外送不重试、长内容可重复外送",
+      "location": "app/services/notify/delivery.py:67",
+      "evidence": "替身送达：短内容成功重复调用只外送一次；4000 字正文截断 [delivery] 标记后外送两次；第一次 toast failed 后第二次被跳过。",
+      "impact": "丢提醒或重复提醒；未触发真实桌面通知。",
+      "recommendation": "独立持久化事件键、每渠道送达状态与重试次数；仅成功渠道幂等抑制，失败可限次退避。"
+    },
+    {
+      "id": "N-011",
+      "severity": "P2",
+      "title": "已解析但无新增被误报为零解析",
+      "location": "app/services/discovery/service.py:768",
+      "evidence": "隔离来源首次 parsed=1/persisted=1/status=ok；重复运行 parsed=1/persisted=0/status=ok_zero。",
+      "impact": "正常去重的来源被误判为解析空，运营诊断不可靠。",
+      "recommendation": "分开 fetch_ok、parsed_count、existing_count、new_count、valuable_count；仅 parsed_count=0 表示 zero_parse。"
+    },
+    {
+      "id": "N-012",
+      "severity": "P2",
+      "title": "非 demo 活动被标为真实",
+      "location": "app/web/templates/campaigns.html:24; app/web/routes/pages.py:175",
+      "evidence": "模板仅按 demo_only 显示 fixture 或真实；candidate、无官方证据的非 demo 数据同样显示真实。",
+      "impact": "把线索存在与活动已核实混为一谈。",
+      "recommendation": "数据来源与验证状态分别展示；candidate 标待核实，不以非 demo 推断真实。"
+    },
+    {
+      "id": "N-013",
+      "severity": "P2",
+      "title": "自动核验成功数被称为 verified",
+      "location": "app/services/discovery/service.py:887; app/scheduler/jobs.py:269; app/services/raffle/auto_verify.py:410",
+      "evidence": "代码以 auto_verify 返回 ok 数统计 verified/auto_verified，而返回 note 明示 not verified；未证明真实 round.verify_status 被改为 verified。",
+      "impact": "监控数字容易被误读为官方核实或资格通过。",
+      "recommendation": "使用 auto_extracted_count 等明确名称；verified 仅统计正式核实状态，展示核验失败和人工复核数。"
+    },
+    {
+      "id": "N-014",
+      "severity": "P2",
+      "title": "跨站转载无可靠事件级合并",
+      "location": "app/services/fare/intel.py:88; app/services/discovery/service.py:251",
+      "evidence": "上一轮相同代码隔离测试：两站同标题合并，第三站改写同一活动后仍为两个组；物化 key 包含来源 ID。",
+      "impact": "重复展示且通知缺少统一事件依据。",
+      "recommendation": "先提供保守候选合并和人工确认、保留全部原始来源及不合并歧义；避免仅凭相同航线价格强制全自动合并。"
+    },
+    {
+      "id": "N-015",
+      "severity": "P2",
+      "title": "正式 toast 调用 Windows PowerShell 5.1",
+      "location": "app/services/notify/delivery.py:33",
+      "evidence": "替身 subprocess 检测 argv[0]=powershell；项目 AGENTS 明确要求 pwsh。",
+      "impact": "违反项目 Windows 执行规则，可能引入编码或行为差异。",
+      "recommendation": "使用明确 pwsh.exe 路径及安全参数传递；测试保留中文、引号并禁止拼接可执行脚本。"
+    },
+    {
+      "id": "N-016",
+      "severity": "P2",
+      "title": "抽奖核心推荐没有正向识别路径",
+      "location": "app/services/discovery/service.py:453; app/services/raffle/auto_verify.py:380; app/web/routes/pages.py:175",
+      "evidence": "当前 materialize 将 core_recommend 固定为 false；代码搜索未发现将已核实中国出境设置为 true 的路径；页面只展示简单活动列表。",
+      "impact": "修复误推荐的同时，尚不能产出有证据的中国出境核心推荐。",
+      "recommendation": "增加独立证据驱动的适用性三态和核心推荐筛选，未知继续待核实；无官方资料不得硬推。"
+    },
+    {
+      "id": "N-017",
+      "severity": "P2",
+      "title": "建表不等于已有数据库结构迁移",
+      "location": "app/db/session.py:45; app/web/app.py:29; app/alembic/versions",
+      "evidence": "Web 启动 init_db 使用 metadata.create_all，旧 official_url 情况只 pass；升级需独立 Alembic 命令。",
+      "impact": "旧库启动可能缺新增字段或与当前模型不一致；本次未访问或迁移私有 DB。",
+      "recommendation": "启动前检查迁移版本并给出清晰阻断/升级指导；先对隔离副本做备份、升级与回滚演练，正式库操作须用户授权。"
+    },
+    {
+      "id": "N-018",
+      "severity": "P2",
+      "title": "UI 缺少完整情报筛选和反馈闭环",
+      "location": "app/web/templates/fare.html; app/web/routes/api.py:339",
+      "evidence": "产品基线要求目的地、类别、出行时间、过期过滤；现页面有出发地和过期控件，情报 API 不提供完整对应过滤；页面主要提供收藏。",
+      "impact": "用户难以快速缩小到可用的个人行程，反馈能力与实际界面不一致。",
+      "recommendation": "先建立结构化且可缺失的字段，再补目的地、类别、时间和反馈控件；未知项不能被误作已匹配。"
+    }
+  ],
+  "remediation_plan": [
+    {
+      "id": "B1",
+      "title": "统一外部访问和本地安全边界",
+      "priority": "P1",
+      "covers": [
+        "N-001",
+        "N-002",
+        "N-015"
+      ],
+      "actions": "梳理 HTML/RSS、入口、OCR、AJAX、链接质量检查及浏览器子资源，统一允许的请求策略；每个重定向及 DNS 均执行公网检查，禁止访问本机和私网；连接层防重绑定并保留 TLS 验证；遵守 robots、限流和响应大小。Windows toast 使用 pwsh，参数与脚本分离。",
+      "acceptance": "MockTransport 验证初始私网、公开跳私网、私网 DNS、重绑定、跨域 robots、403/429、过大响应全部拒绝；公网静态安全样本可访问；不访问真实内网。"
+    },
+    {
+      "id": "B2",
+      "title": "统一机票语义与可信显示",
+      "priority": "P1",
+      "covers": [
+        "N-003",
+        "N-004",
+        "N-005",
+        "N-006",
+        "N-008"
+      ],
+      "actions": "把来源角色、实际出发地、目的地、航司、价格类型、币种、发布/发现/旅行/销售时间分离并保留证据；对多目的地价格只展示被证据绑定的路线与金额；不确定值保留 unknown；杜绝品牌自动等于出发地。",
+      "acceptance": "上海→香港、香港航空上海、Peach 大阪→首尔、真实 HK Express 多线路、立省 HK$800、20KG、旅行日期与发布日期、未知时间等全部通过；真实 FlyNext 样本前后对照，报道价仍标非实时。"
+    },
+    {
+      "id": "B3",
+      "title": "四频道与消费者筛选闭环",
+      "priority": "P1",
+      "covers": [
+        "N-003",
+        "N-018"
+      ],
+      "actions": "频道先按统一候选集与明确地域分流；全球不默认偏好过滤；全国不并入港澳；我的出发地只接受明确机场，未知折叠。补目的地、类别、时间范围、反馈与来源链接，保持小屏可用。",
+      "acceptance": "同一 signal 可多频道但事件通知唯一；端到端 API 与浏览器测各频道、全国/HKG/MFM、偏好变更、未知及过期过滤；误命中率和漏报率基于标注样本公开统计。"
+    },
+    {
+      "id": "B4",
+      "title": "P3 行程状态机与恢复",
+      "priority": "P1",
+      "covers": [
+        "N-007"
+      ],
+      "actions": "定义创建、确认、编辑、暂停、取消、完成、恢复的统一状态转换；任意正式执行入口复核 confirmed、demo、archived、completed；关闭改期自动重扫不应禁用已有订阅；旧脏订阅只在隔离副本核查后设计恢复。",
+      "acceptance": "未确认、demo、confirmed、编辑设置开关、历史 disabled 订阅、取消/结束、重启均有端到端测试；未确认永不正式扫描，确认后可正确启用；不改动正式库。"
+    },
+    {
+      "id": "B5",
+      "title": "P2 官方证据与中国出境",
+      "priority": "P1",
+      "covers": [
+        "N-009",
+        "N-012",
+        "N-013",
+        "N-016"
+      ],
+      "actions": "把候选、官方核实、免费、报名期、适用内地出境、真实用户资格、入口、回执拆开表达；每项保留来源和不确定性；只根据官方证据正向识别核心推荐。统计和页面均禁止把非 demo 或自动提取当 verified。",
+      "acceptance": "国籍/居住缺一分别 unknown，完整冲突 ineligible，无官方规则/出发地 unknown；模拟已证实内地出境方可核心推荐；汽车/现金/国内航段排除；不真实报名。"
+    },
+    {
+      "id": "B6",
+      "title": "来源、通知和事件去重",
+      "priority": "P2",
+      "covers": [
+        "N-010",
+        "N-011",
+        "N-014"
+      ],
+      "actions": "来源健康分别记录 fetch、parse、已存在、新增、有效；通知采用事件+渠道的持久状态，成功去重、失败退避；跨站保守候选合并，保留全部 URL，提供可拆分与人工复核。",
+      "acceptance": "已解析零新增不等于零解析；同一事件多源不重复通知，长正文不丢送达状态；失败可重试且成功不重复；相似不同活动不得误合并。"
+    },
+    {
+      "id": "B7",
+      "title": "数据库与日常运行可靠性",
+      "priority": "P2",
+      "covers": [
+        "N-017"
+      ],
+      "actions": "在隔离库验证迁移版本、备份恢复、旧 schema、单实例、断网恢复及故障状态；保留原 72h 观察起点，持续积累；不因验收重启用户 Worker。",
+      "acceptance": "新库、旧库副本迁移与恢复演练可复现；失败不破坏数据；Web/Worker 同库单实例；72h 使用实际连续证据而非墙钟推断。"
+    },
+    {
+      "id": "B8",
+      "title": "统一验收、交付和后续审计",
+      "priority": "P1",
+      "covers": [
+        "P1-CHANNELS",
+        "P2-HONESTY",
+        "P3-GATE",
+        "RUNTIME",
+        "V1-104"
+      ],
+      "actions": "一轮完整实现后按需求 ID、负例、来源、界面、安全和运行证据统一出报告；明确 verified/unknown/blocked，附真实日志与可重现的隔离命令，不用 mock、200、测试数冒充真实业务。",
+      "acceptance": "104 项逐项有证据或诚实标未测；真实网络受限标 BLOCKED；未修或部分采纳意见有原因；仅最后统一交 Codex 复验，不逐项往返。"
+    }
+  ],
+  "conclusions": {
+    "personal_trial": "NO",
+    "v1_product": "NO",
+    "public_launch_tech": "NO"
+  },
+  "commands_run": [
+    "git status --short --branch; git rev-parse HEAD; git ls-remote origin refs/heads/develop",
+    "git diff --stat 15c123c HEAD -- app tests",
+    "PowerShell 7: PYTHONPATH=<project>; PYTHONDONTWRITEBYTECODE=1; .venv/Scripts/python.exe -B -m pytest tests/unit -q -p no:cacheprovider → 228 passed, 1 warning in 11.70s",
+    "python -B stdin: SQLite :memory: cases, synthetic price/date/origin and eligibility probes, mocked delivery, HTTP MockTransport redirect, 200 parse/repeat accounting",
+    "python -B stdin: robots-aware HttpxFetchAdapter read-only FlyNext homepage and in-memory fare materialization",
+    "Prior turn on 15c123c identical app code: Playwright Edge isolated HTML with mocked API XSS/global-channel request; confirmed-trip lifecycle; no real toast or submissions"
+  ]
+}

@@ -290,18 +290,26 @@ def _strip_airline_names(title: str) -> str:
 
 
 def extract_origin_iatas_from_title(title: str) -> list[str]:
-    """提取出发地；先剥航司名，再优先显式出发模式，避免目的/航司误判。"""
+    """提取出发地：仅显式方向证据（城市出发/from/IATA对）；品牌与目的地不作为出发。
+
+    N-003：上海→香港 只得 PVG；Peach 大阪→首尔 不得误判 HKG；未知归空。
+    """
     t = title or ""
     body = _strip_airline_names(t)
     found: list[str] = []
+    explicit = False
 
-    def add(code: str) -> None:
+    def add(code: str, *, from_explicit: bool = False) -> None:
+        nonlocal explicit
         if code and code not in found:
             found.append(code)
+        if from_explicit:
+            explicit = True
 
-    # 显式：X出发 / X→Y / X -> Y / from X
+    # 显式：X出发 / X→Y / X -> Y / from X（目的地跟在后面时不把目的地当出发）
     m = re.search(
-        r"(重庆|成都|北京|上海|广州|深圳|杭州|武汉|昆明|香港|澳門|澳门|Hong\s*Kong|Macau|Macao)[^\dA-Za-z]{0,4}(?:出发|起飞|→|->|至|飞|來回|往返|from)",
+        r"(重庆|成都|北京|上海|广州|深圳|杭州|武汉|昆明|香港|澳門|澳门|Hong\s*Kong|Macau|Macao)"
+        r"[^\dA-Za-z]{0,4}(?:出发|起飞|→|->|至|飞|來回|往返|from)",
         body,
         re.I,
     )
@@ -322,58 +330,85 @@ def extract_origin_iatas_from_title(title: str) -> list[str]:
             "澳门": "MFM",
         }
         if city.lower().startswith("hong"):
-            add("HKG")
+            add("HKG", from_explicit=True)
         elif city.lower().startswith("mac"):
-            add("MFM")
+            add("MFM", from_explicit=True)
         else:
-            add(mapping.get(city, "HKG" if "港" in city else None))
+            code = mapping.get(city)
+            if code:
+                add(code, from_explicit=True)
 
-    # 显式 IATA 对：ABC-DEF 或 ABC→DEF（两端 3 字母）
+    # 显式 IATA 对：ABC→DEF / ABC-DEF（两端 3 字母）→ 仅第一端为出发
     m2 = re.findall(r"\b([A-Z]{3})\b\s*(?:→|->|-|–)\s*\b([A-Z]{3})\b", body)
     if m2:
-        add(m2[0][0])
+        add(m2[0][0], from_explicit=True)
 
-    # 北上广
-    # 港澳航司品牌 → 出发地启发（无内地出发词时）
-    brand_hk = bool(re.search(r"HK Express|Hong Kong Airlines|國泰|国泰|Cathay|Peach|樂桃|乐桃", t, re.I))
-    if brand_hk and not re.search(
-        r"(上海|北京|成都|重庆|广州|深圳|杭州|武汉|昆明).{0,6}(出发|起飞|from)", body, re.I
-    ):
-        add("HKG")
-    if "北上广" in body:
+    # from X 模式（英文）
+    m_from = re.search(
+        r"\bfrom\s+(Chongqing|Chengdu|Beijing|Shanghai|Guangzhou|Shenzhen|Hangzhou|Wuhan|Kunming|Hong\s*Kong|Hongkong|Macau|Macao)",
+        body,
+        re.I,
+    )
+    if m_from:
+        city_en = m_from.group(1).lower().replace(" ", "")
+        en_map = {
+            "chongqing": "CKG",
+            "chengdu": "TFU",
+            "beijing": "PEK",
+            "shanghai": "PVG",
+            "guangzhou": "CAN",
+            "shenzhen": "SZX",
+            "hangzhou": "HGH",
+            "wuhan": "WUH",
+            "kunming": "KMG",
+            "hongkong": "HKG",
+            "macau": "MFM",
+            "macao": "MFM",
+        }
+        if city_en in en_map:
+            add(en_map[city_en], from_explicit=True)
+
+    # 北上广并列（全国促销）
+    if "北上广" in body and not explicit:
         add("PEK")
         add("PVG")
         add("CAN")
-        # 北上广/成都 等并列
         for city, iata in _CN_CITY_TO_IATA.items():
             if city == "北上广":
                 continue
             if city in body:
                 add(iata)
-    if not found:
-        # 无显式出发/品牌出发时，才把正文内地城市当出发（全国多城促销）
+
+    # 无显式出发时：单一内地城市可作弱出发线索（全国多城促销仍靠北上广）
+    # 品牌已明确香港航司时，孤立内地城市名（无出发词）不得抢跑为出发
+    brand_hk = bool(re.search(r"HK Express|Hong Kong Airlines|國泰|国泰|Cathay", t, re.I))
+    if not found and not explicit and not brand_hk:
         for city, iata in _CN_CITY_TO_IATA.items():
             if city == "北上广":
                 continue
             if city in body:
                 add(iata)
                 break
-    if not re.search(r"(上海|北京|成都|重庆|广州|深圳|杭州|武汉|昆明).{0,6}(出发|起飞|from)", body, re.I):
+
+    # 品牌弱提示：仅香港航司品牌且无相反内地出发、且标题本身无已解析出发时才可 HKG
+    # N-003：Peach/乐桃是日本航司，不得映射 HKG；目的地城市不得当出发
+    if brand_hk and not explicit and not found:
+        if re.search(r"(香港|HKG|Hong\s*Kong)", body, re.I) or brand_hk:
+            add("HKG")
+
+    # 港澳优惠语境：仅当无显式出发、且城市更像促销主场时
+    if not explicit and not found and not brand_hk:
         if re.search(r"(香港|HKG|Hong\s*Kong)", body, re.I) and re.search(
             r"(優惠|优惠|促銷|促销|機票|机票|來回|往返|周年|週年|sale|offer)", body, re.I
         ):
-            add("HKG")
+            # 排除「上海→香港」等已含方向但未匹配到的城市组合
+            if not re.search(r"[一-鿿]{2,4}\s*(?:→|->|飞|to)\s*[一-鿿]{2,4}", body):
+                add("HKG")
         if re.search(r"(澳門|澳门|MFM|Macau)", body, re.I) and re.search(
             r"(優惠|优惠|促銷|促销|機票|机票|來回|往返)", body, re.I
         ):
-            add("MFM")
-    return found
-
-    if not found:
-        if re.search(r"(香港|HKG).{0,16}(優惠|优惠|促銷|促销|機票|机票|來回|往返|出发)", body, re.I):
-            add("HKG")
-        if re.search(r"(澳門|澳门|MFM).{0,16}(優惠|优惠|促銷|促销|機票|机票|來回|往返|出发)", body, re.I):
-            add("MFM")
+            if not re.search(r"[一-鿿]{2,4}\s*(?:→|->|飞|to)\s*[一-鿿]{2,4}", body):
+                add("MFM")
     return found
 
 
@@ -699,8 +734,16 @@ def intel_quality_stats(
             continue
         link_checked += 1
         try:
-            r = httpx.get(url, headers=headers, timeout=10, follow_redirects=True)
-            if r.status_code < 400:
+            from app.core.safe_http import safe_get_sync
+
+            r = safe_get_sync(
+                url,
+                headers=headers,
+                timeout=10,
+                check_robots=False,
+                max_bytes=64_000,
+            )
+            if r.ok:
                 link_ok += 1
             else:
                 link_bad += 1
