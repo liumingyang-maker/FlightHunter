@@ -57,6 +57,28 @@ def discover_official_tourism_events(
     assert_public_http_url(list_url)
 
     signals: list[ParsedSignal] = []
+    # 1) 从当前 HTML 直接抽 contentsView 链接（美食栏等）
+    for m in re.finditer(
+        r'href=["\']([^"\']*contentsView\.do\?[^"\']*vcontsId=\d+[^"\']*)["\']',
+        html,
+        re.I,
+    ):
+        href = urljoin(page_url, m.group(1))
+        # 尝试取邻近文本作标题
+        idx = html.find(m.group(1))
+        window = html[max(0, idx - 200) : idx + 200]
+        title_m = re.search(r">([^<>]{6,120})<", window)
+        title = (title_m.group(1).strip() if title_m else "VISITKOREA content")[:200]
+        signals.append(
+            ParsedSignal(
+                title=title,
+                raw_claim_text=title,
+                url=href,
+                deal_types=["survey_event"],
+                confidence="low",
+            )
+        )
+    # 2) AJAX 列表端点
     try:
         headers = {
             "User-Agent": "FlightHunter-Bot/1.0 (local live research)",
@@ -539,11 +561,13 @@ def materialize_multi_round_rules(
                 "multi_round": True,
                 "round_label": r.round_label,
                 "active_now": r.active_now,
+                "open_status": r.open_status,
                 "prize_is_flight": r.prize_is_flight,
                 "prize_is_gift_or_other": r.prize_is_gift_or_other,
                 "residency_restriction": r.residency_restriction,
                 "opens_raw": r.opens_raw,
                 "closes_raw": r.closes_raw,
+                "requires_login_to_enter": r.requires_login_to_enter,
                 "source_list_url": page_url,
             },
             ensure_ascii=False,

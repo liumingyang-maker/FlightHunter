@@ -578,6 +578,11 @@ def raffle_multi_round_check(
     nationality: str | None = typer.Option(None, help="合成测试国籍，如 CN"),
     residence: str | None = typer.Option(None, help="合成测试居住国，如 CN"),
     age: int | None = typer.Option(None),
+    poster_facts_json: str | None = typer.Option(
+        None,
+        "--poster-facts-json",
+        help='官方海报人工读出的JSON，如 {"opens":"2026-10-26","closes":"2026-11-22","winners":3,"tickets":2}',
+    ),
 ) -> None:
     """同页多活动/多期拆分核验；禁止跨期拼接机票奖品与截止日期。"""
     import asyncio
@@ -603,8 +608,12 @@ def raffle_multi_round_check(
         console.print(f"[red]读取失败 {result.error_code}: {result.message}[/red]")
         raise typer.Exit(1)
     now = datetime.now(UTC).replace(tzinfo=None)
+    poster = _json.loads(poster_facts_json) if poster_facts_json else None
     parsed = parse_multi_round_event_html(
-        result.text or "", page_url=result.final_url or url, now=now
+        result.text or "",
+        page_url=result.final_url or url,
+        now=now,
+        poster_facts=poster,
     )
     rounds_out = []
     for r in parsed.rounds:
@@ -615,11 +624,17 @@ def raffle_multi_round_check(
             {
                 **r.to_dict(),
                 "eligibility": el,
-                "can_enter_now": bool(r.active_now is True and el.get("state") == "eligible"),
+                "can_enter_now": bool(
+                    r.open_status == "open" and el.get("state") == "eligible"
+                ),
                 "can_enter_now_note": (
-                    "历史回归：活动未开放或已结束，不计入真实可参加"
-                    if r.active_now is not True
+                    "活动已结束，不计入真实可参加"
+                    if r.open_status == "closed"
+                    else "开放状态待核实（日期未知/需登录等），不按已结束处理"
+                    if r.open_status == "pending_verification"
                     else "规则允许且仍开放；仍须人工确认官方页后自愿报名"
+                    if r.open_status == "open"
+                    else "开放状态未知"
                 ),
             }
         )
@@ -634,12 +649,17 @@ def raffle_multi_round_check(
     payload["open_flight_rounds"] = [
         r["round_label"]
         for r in rounds_out
-        if r.get("prize_is_flight") and r.get("active_now") is True
+        if r.get("prize_is_flight") and r.get("open_status") == "open"
+    ]
+    payload["pending_verification_flight_rounds"] = [
+        r["round_label"]
+        for r in rounds_out
+        if r.get("prize_is_flight") and r.get("open_status") == "pending_verification"
     ]
     payload["ended_flight_rounds"] = [
         r["round_label"]
         for r in rounds_out
-        if r.get("prize_is_flight") and r.get("active_now") is not True
+        if r.get("prize_is_flight") and r.get("open_status") == "closed"
     ]
     console.print_json(_json.dumps(payload, ensure_ascii=False, default=str))
 

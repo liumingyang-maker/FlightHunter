@@ -225,6 +225,22 @@ class HttpxFetchAdapter(SourceAdapter):
             sig = parse_raffle_label(label, page_url=href)
             if sig:
                 signals.append(sig)
+            elif "contentsView.do" in href and ("vcontsId=" in href):
+                # 官方详情链接：标签可能不含 giveaway 关键词，仍作线索
+                if label and len(label) >= 6 and not any(
+                    k in label.lower() for k in ("home", "menu", "login", "cookie")
+                ):
+                    from app.adapters.base import ParsedSignal
+
+                    signals.append(
+                        ParsedSignal(
+                            title=label[:200],
+                            raw_claim_text=label,
+                            url=href,
+                            deal_types=["survey_event"],
+                            confidence="low",
+                        )
+                    )
             if len(signals) >= 40:
                 break
         return signals

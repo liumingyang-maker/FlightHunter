@@ -422,6 +422,7 @@ def list_rounds(
     limit: int = Query(50, le=200),
     open_only: bool = False,
     flight_only: bool = False,
+    pending_only: bool = False,
 ):
     stmt = select(CampaignRound).order_by(CampaignRound.updated_at_utc.desc()).limit(limit * 3)
     if status:
@@ -444,16 +445,23 @@ def list_rounds(
     def _source_list(r: CampaignRound) -> str | None:
         return _tags(r).get("source_list_url")
 
-    def _is_open(r: CampaignRound) -> bool:
+    def _open_status(r: CampaignRound) -> str:
         t = _tags(r)
-        if "active_now" in t:
-            return t.get("active_now") is True
+        if t.get("open_status") in {"open", "closed", "pending_verification", "unknown"}:
+            return str(t["open_status"])
+        if t.get("active_now") is True:
+            return "open"
+        if t.get("active_now") is False:
+            return "closed"
         closes = r.entry_closes_at_utc
         if closes is not None:
             c = closes.replace(tzinfo=None) if closes.tzinfo else closes
-            return c >= now
-        # 无明确有效期：不得当作“当前开放”
-        return False
+            return "open" if c >= now else "closed"
+        # 无证据日期 → 未知/待核实，绝不当 closed
+        return "pending_verification" if t.get("requires_login_to_enter") else "unknown"
+
+    def _is_open(r: CampaignRound) -> bool:
+        return _open_status(r) == "open"
 
     def _is_flight(r: CampaignRound) -> bool:
         t = _tags(r)
@@ -467,7 +475,10 @@ def list_rounds(
 
     filtered = []
     for r in rows:
-        if open_only and not _is_open(r):
+        st = _open_status(r)
+        if open_only and st != "open":
+            continue
+        if pending_only and st != "pending_verification":
             continue
         if flight_only and not _is_flight(r):
             continue
@@ -484,7 +495,8 @@ def list_rounds(
                 "source_list_url": _source_list(r),
                 "verify_status": r.verify_status,
                 "demo_only": r.demo_only,
-                "open_now": _is_open(r),
+                "open_status": _open_status(r),
+                "open_now": _open_status(r) == "open",
                 "prize_is_flight": _is_flight(r),
                 "entry_timezone": r.entry_timezone,
                 "entry_closes_at_utc": r.entry_closes_at_utc.isoformat()

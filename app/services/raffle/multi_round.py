@@ -36,6 +36,9 @@ class EventRoundRules:
     notification_text: str | None = None
     prize_terms: str | None = None
     active_now: bool | None = None
+    # open | closed | pending_verification | unknown —— 日期未知 ≠ closed
+    open_status: str = "unknown"
+    requires_login_to_enter: bool = False
     is_current_phase: bool | None = None
     evidence_quote: str | None = None
     blocked_notes: list[str] = field(default_factory=list)
@@ -65,12 +68,17 @@ class MultiRoundParseResult:
             "open_flight_rounds": [
                 r.round_label
                 for r in self.rounds
-                if r.prize_is_flight and r.active_now is True
+                if r.prize_is_flight and r.open_status == "open"
+            ],
+            "pending_verification_flight_rounds": [
+                r.round_label
+                for r in self.rounds
+                if r.prize_is_flight and r.open_status == "pending_verification"
             ],
             "ended_or_inactive_flight_rounds": [
                 r.round_label
                 for r in self.rounds
-                if r.prize_is_flight and r.active_now is not True
+                if r.prize_is_flight and r.open_status == "closed"
             ],
         }
 
@@ -125,11 +133,35 @@ def _status_for_range(opens: datetime | None, closes: datetime | None, now: date
     return None
 
 
+def open_status_from_dates(
+    opens: datetime | None,
+    closes: datetime | None,
+    now: datetime,
+    *,
+    requires_login: bool = False,
+    page_has_visible_join: bool = False,
+) -> str:
+    """开放状态：仅日期证据可判 open/closed；否则 pending/unknown。"""
+    if opens and closes:
+        if now < opens:
+            return "pending_verification"  # 尚未开始报名窗口，不记 closed
+        if now > closes:
+            return "closed"
+        return "open"
+    if closes:
+        return "open" if now <= closes else "closed"
+    # 无完整日期
+    if requires_login or page_has_visible_join:
+        return "pending_verification"
+    return "unknown"
+
+
 def parse_multi_round_event_html(
     html: str,
     *,
     page_url: str,
     now: datetime | None = None,
+    poster_facts: dict[str, Any] | None = None,
 ) -> MultiRoundParseResult:
     """把同页 Event1/Event2/Period 拆成独立轮次；禁止把 A 轮机票与 B 轮礼券日期拼接。"""
     from bs4 import BeautifulSoup
@@ -149,8 +181,8 @@ def parse_multi_round_event_html(
     text = soup.get_text("\n", strip=True)
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
 
-    # 检测是否像 VISITKOREA 详情
-    if not re.search(r"event|period|prize|winner", text, re.I):
+    # 检测是否像 VISITKOREA 详情（含中文美食活动文案）
+    if not re.search(r"event|period|prize|winner|机票|活动|专栏|quiz", text, re.I):
         out.notes.append("no_event_markers")
         return out
 
@@ -265,7 +297,29 @@ def parse_multi_round_event_html(
             n_m = re.search(r"(Winners will be[^\n]{0,160}email[^\n]{0,80}|announced[^\n]{0,80}via[^\n]{0,80})", seg, re.I)
             notification = n_m.group(1) if n_m else "email notification mentioned"
 
+        # 中文/海报日期：2026.10.26(周一) ~ 2026.11.22(周日) 或 2026/10/26
+        if not opens:
+            pm = re.search(
+                r"(20\d{2})[./年-](\d{1,2})[./月-](\d{1,2})[^\d]{0,12}(?:~|–|-|至|到)\s*(20\d{2})[./年-](\d{1,2})[./月-](\d{1,2})",
+                seg,
+            )
+            if pm:
+                opens = datetime(int(pm.group(1)), int(pm.group(2)), int(pm.group(3)))
+                closes = datetime(int(pm.group(4)), int(pm.group(5)), int(pm.group(6)))
+                opens_raw = f"{pm.group(1)}.{pm.group(2)}.{pm.group(3)}"
+                closes_raw = f"{pm.group(4)}.{pm.group(5)}.{pm.group(6)}"
         active = _status_for_range(opens, closes, now_n)
+        status = open_status_from_dates(
+            opens,
+            closes,
+            now_n,
+            requires_login=bool(re.search(r"Join Now|Log in to unlock", seg, re.I)),
+            page_has_visible_join=bool(re.search(r"Join Now", seg)),
+        )
+        if opens is None and closes is None and re.search(r"Join Now", seg, re.I):
+            status = "pending_verification"
+        if active is None and status == "unknown" and re.search(r"Join Now|Log in", seg, re.I):
+            status = "pending_verification"
         rr = EventRoundRules(
             round_label=label,
             edition_key=edition,
@@ -287,11 +341,25 @@ def parse_multi_round_event_html(
             entry_channel="online_event" if "event" in seg.lower() else None,
             notification_text=notification,
             prize_terms=None,
-            active_now=active,
+            active_now=active if status in {"open", "closed"} else (active if active is not None else None),
+            open_status=status,
+            requires_login_to_enter=bool(re.search(r"Join Now|signin\.do|Log in to unlock", seg, re.I)),
             is_current_phase=is_current,
             evidence_quote=seg[:800],
-            tags={"source": "multi_round_split"},
+            tags={"source": "multi_round_split", "open_status": status},
         )
+        # open_status 与 active_now 对齐
+        if status == "open":
+            rr.active_now = True
+        elif status == "closed":
+            rr.active_now = False
+        else:
+            rr.active_now = None
+        if prize_flight and not opens:
+            rr.blocked_notes.append("flight_prize_without_parsed_dates")
+        if status == "pending_verification":
+            rr.blocked_notes.append("open_state_pending_verification_not_closed")
+        return rr
         if prize_flight and not opens:
             rr.blocked_notes.append("flight_prize_without_parsed_dates")
         return rr
@@ -369,12 +437,64 @@ def parse_multi_round_event_html(
             r.residency_restriction = page_res
             r.nationality_restriction = page_res
 
+    # 海报证据（仅操作员从官方海报读出的日期/奖品；非注入活动 URL）
+    if poster_facts:
+        opens = _parse_date_flexible(str(poster_facts.get("opens") or ""))
+        closes = _parse_date_flexible(str(poster_facts.get("closes") or ""))
+        status = open_status_from_dates(opens, closes, now_n)
+        pr = EventRoundRules(
+            round_label="poster_flight_event",
+            edition_key="poster_flight",
+            title=str(poster_facts.get("title") or "poster flight event")[:200],
+            organizer_name=organizer,
+            prize_summary=str(
+                poster_facts.get("prize_summary")
+                or "round-trip tickets (poster)"
+            )[:200],
+            prize_is_flight=True,
+            winners_count=int(poster_facts["winners"]) if poster_facts.get("winners") else None,
+            tickets_per_winner=int(poster_facts["tickets"])
+            if poster_facts.get("tickets")
+            else None,
+            opens_raw=str(poster_facts.get("opens") or ""),
+            closes_raw=str(poster_facts.get("closes") or ""),
+            opens_iso=opens.isoformat() if opens else None,
+            closes_iso=closes.isoformat() if closes else None,
+            free_entry=bool(poster_facts.get("free_entry", True)),
+            purchase_required=False,
+            residency_restriction=poster_facts.get("residency_restriction"),
+            entry_channel="quiz_event",
+            open_status=status,
+            active_now=True if status == "open" else (False if status == "closed" else None),
+            evidence_quote=str(poster_facts.get("evidence") or "official poster facts")[:800],
+            tags={"source": "official_poster_facts"},
+            blocked_notes=[]
+            if status == "open"
+            else ["poster_facts_not_open"],
+        )
+        # 若正文已有同主题轮次则更新其日期，否则追加
+        updated = False
+        for r in rounds:
+            if r.prize_is_flight and (not r.opens_iso):
+                r.opens_raw = pr.opens_raw
+                r.closes_raw = pr.closes_raw
+                r.opens_iso = pr.opens_iso
+                r.closes_iso = pr.closes_iso
+                r.open_status = pr.open_status
+                r.active_now = pr.active_now
+                r.winners_count = pr.winners_count
+                r.tickets_per_winner = pr.tickets_per_winner
+                r.blocked_notes.append("dates_from_official_poster_facts")
+                updated = True
+        if not updated and not any(r.prize_is_flight and r.open_status == "open" for r in rounds):
+            rounds.append(pr)
+        out.notes.append("poster_facts_applied")
+
     # 拆分防护：若某段同时含 flight 与 Gift Card 且日期来自 Period，flight 标记仅当本段命中
     for r in rounds:
         if r.prize_is_flight and r.prize_is_gift_or_other:
-            # 保守：标题更偏 flight 则保留 flight，否则拆 note
             r.blocked_notes.append("mixed_prize_keywords_in_segment")
-        if r.prize_is_flight and r.active_now is True and not r.closes_iso:
+        if r.prize_is_flight and r.open_status == "open" and not r.closes_iso:
             r.blocked_notes.append("open_flight_missing_close_date")
 
     out.rounds = rounds

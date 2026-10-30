@@ -222,6 +222,17 @@ def ensure_default_sources(session: Session, settings: Settings) -> list[Source]
             "notes": "韩国旅游发展局英文站首页；活动链接自动发现，非注入具体活动URL",
         },
         {
+            "name": "VISITKOREA 中文美食栏目",
+            "base_url": "https://chinese.visitkorea.or.kr/svc/sp/food",
+            "kind": "official_tourism_board",
+            "language": "zh-Hans",
+            "country_code": "KR",
+            "access_policy": "public_fetch",
+            "allowed_fetch_mode": "httpx",
+            "module": "raffle",
+            "notes": "官方美食栏目入口；可发现地方机场机票等活动，非注入详情URL",
+        },
+        {
             "name": "Japan National Tourism Org",
             "base_url": "https://www.japan.travel/en/",
             "kind": "official_tourism_board",
