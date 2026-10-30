@@ -611,7 +611,18 @@ def raffle_multi_round_check(
         el = eligibility_with_synthetic_profile(
             r, nationality=nationality, residence=residence, age=age
         )
-        rounds_out.append({**r.to_dict(), "eligibility": el})
+        rounds_out.append(
+            {
+                **r.to_dict(),
+                "eligibility": el,
+                "can_enter_now": bool(r.active_now is True and el.get("state") == "eligible"),
+                "can_enter_now_note": (
+                    "历史回归：活动未开放或已结束，不计入真实可参加"
+                    if r.active_now is not True
+                    else "规则允许且仍开放；仍须人工确认官方页后自愿报名"
+                ),
+            }
+        )
     payload = {
         "page_fetched": True,
         "now": now.isoformat(),

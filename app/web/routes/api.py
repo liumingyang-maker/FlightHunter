@@ -452,7 +452,8 @@ def list_rounds(
         if closes is not None:
             c = closes.replace(tzinfo=None) if closes.tzinfo else closes
             return c >= now
-        return True
+        # 无明确有效期：不得当作“当前开放”
+        return False
 
     def _is_flight(r: CampaignRound) -> bool:
         t = _tags(r)
