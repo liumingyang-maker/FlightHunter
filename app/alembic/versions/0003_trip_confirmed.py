@@ -7,9 +7,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    from alembic import op
     import sqlalchemy as sa
     from sqlalchemy import inspect
+
+    from alembic import op
 
     bind = op.get_bind()
     cols = {c["name"] for c in inspect(bind).get_columns("trips")}
@@ -21,8 +22,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    from alembic import op
     from sqlalchemy import inspect
+
+    from alembic import op
 
     bind = op.get_bind()
     cols = {c["name"] for c in inspect(bind).get_columns("trips")}
