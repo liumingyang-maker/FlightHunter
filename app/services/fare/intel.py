@@ -656,6 +656,14 @@ def build_intel_view(
                 "destination_airport": s.destination_airport,
                 "reported_total": s.reported_total,
                 "currency": s.currency,
+                # 多价/未知：title 含多个明确金额但 reported_total 为空
+                "multi_price": s.reported_total is None
+                and bool(
+                    __import__("re").findall(
+                        r"(?:HK\$|MOP\$|¥|RMB)\s*[\d,]+|(?:\d[\d,]*)\s*元",
+                        s.title or "",
+                    )
+                ),
                 "category": cat,
                 "deal_types": _deal_types(s),
                 "source_url": s.original_url,

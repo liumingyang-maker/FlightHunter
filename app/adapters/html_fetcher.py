@@ -404,35 +404,38 @@ def extract_route_price_candidates(label: str) -> list[dict[str, Any]]:
         r"台北|台湾|台中|高雄|香港|澳门|上海|北京|成都|重庆|广州|深圳|杭州|武汉|昆明)"
     )
     price_pat = r"(MOP\$?\s*|HK\$?\s*|¥\s*|RMB\s*|US\$?\s*)(\d[\d,]{2,})"
-    # 间隔仅允许空白/标点 —— 禁止跨过「出发」等汉字（否则香港出发 台湾 HK$ 会错绑香港）
-    gap = r"[\s·.、,，:：\-–—/|]{0,8}"
-    # dest 后紧邻价格
-    for m in re.finditer(dest_pat + gap + price_pat, label, re.I):
-        try:
-            amt = float(m.group(3).replace(",", ""))
-        except ValueError:
-            continue
-        cur = _currency_from_token(m.group(2))
-        window = label[max(0, m.start() - 8) : m.end()]
-        if re.search(r"最高減|最多減|立省|立減|up to|save ", window, re.I):
-            continue
-        out.append({"dest_city": m.group(1), "amount": amt, "currency": cur})
-    # 价格后紧邻 dest：仅当 dest 后**没有**紧跟另一价格（避免 HK$800 · 大阪 HK$1500 误绑大阪=800）
-    for m in re.finditer(
-        price_pat + gap + dest_pat + r"(?!" + gap + price_pat + r")",
-        label,
-        re.I,
-    ):
+    # 就近绑定：每个价格只认「前方最近」且非出发语境的目的地
+    for m in re.finditer(price_pat, label):
         try:
             amt = float(m.group(2).replace(",", ""))
         except ValueError:
             continue
         cur = _currency_from_token(m.group(1))
-        city = m.group(3)
-        if any(c.get("dest_city") == city and c.get("amount") == amt for c in out):
-            continue
-        window = label[max(0, m.start() - 8) : m.end()]
+        window = label[max(0, m.start() - 10) : m.end()]
         if re.search(r"最高減|最多減|立省|立減|up to|save ", window, re.I):
+            continue
+        before = label[max(0, m.start() - 36) : m.start()]
+        dests_before = list(re.finditer(dest_pat, before))
+        city = None
+        if dests_before:
+            d = dests_before[-1]
+            tail = before[d.end() :]
+            # 「X出发」是出发语境，不得绑价
+            if not re.match(r"\s*(出发|起飞|from|→|->)", tail, re.I):
+                city = d.group(1)
+        if city is None:
+            after = label[m.end() : m.end() + 16]
+            dests_after = list(re.finditer(dest_pat, after))
+            if dests_after and not re.match(
+                r"[\s·.、,，:：\-–—]*(机票|機票)?[\s·.、,，:：\-–—]*"
+                + price_pat,
+                after,
+                re.I,
+            ):
+                city = dests_after[0].group(1)
+        if city is None:
+            continue
+        if any(c.get("dest_city") == city and c.get("amount") == amt for c in out):
             continue
         out.append({"dest_city": city, "amount": amt, "currency": cur})
     dests = set(re.findall(dest_pat, label, re.I))

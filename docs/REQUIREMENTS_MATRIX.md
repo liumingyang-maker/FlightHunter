@@ -1,55 +1,79 @@
-# FlightHunter 需求完成矩阵（诚实口径 · 2026-10-30 产品方向调整后）
+# FlightHunter 需求完成矩阵（诚实口径 · 2026-10-31 冲刺收尾）
 
-**HEAD：** `aecb6dc` 起在 `develop` 演进  
-**基线文档：** `docs/PRODUCT_BASELINE_20261030.md`  
-**口径：** `done` = 可调用实现 + 证据；`partial` = 有代码未闭环；`blocked` = 外部授权；`not_implemented` = 无实现。**测试数量 ≠ 104 项验收。**
+**HEAD：** 冲刺收尾批（P0–P5）  
+**基线文档：** `docs/PRODUCT_BASELINE_20261030.md` + `docs/SPRINT_CLOSEOUT_PLAN.md`  
+**口径：** `done` = 可调用实现 + 证据；`partial` = 有代码未闭环；`blocked` = 外部授权；`not_implemented` = 无实现。  
+**测试数量 ≠ 104 项验收。**
 
-## 需求调整记录（非假装已开发）
+## 汇总（诚实）
 
-| 旧强制项 | 新状态 |
+| 状态 | 说明 |
 |---|---|
-| 实时机票报价供应商 / urgent_verified 可购价 | **需求取消（V1.0）** — 适配器代码保留，情报+来源链接为完整能力 |
-| 无报价导致雷达不可用 | **否** — P1 情报模式 |
+| done | P0 安全层、P1 样本语义、P2 三态、P3 状态机、P4 迁移检查 |
+| partial | 浏览器 IP 绑定、跨源合并、旅行日期抽取、通知 exactly-once |
+| NOT_TESTED | 104 项全量、72h、真实 toast、公网 |
+| blocked | 实时报价 API（V1 非必需）、IMAP、未授权供应商 |
 
-## 汇总
-
-| 状态 | 约计 |
-|---|---|
-| done | 核心 P1/P2/P3 子能力 + 既有安全/调度/OCR |
-| partial | 跨源去重、部分源 robots、UI 多选控件 |
-| blocked | IMAP、部分国际源、未授权供应商 |
-
-## P1 机票情报（新优先级最高）
+## P0 安全（本轮）
 
 | ID | 状态 | 证据 |
 |---|---|---|
-| FAR-P1-01 出发地多选/全国/HKG-MFM | done（服务层+API） | `airports/china.py` · 256 内地机场 · 测试 |
-| FAR-P1-02 国际航线过滤 | done | `is_international_pair` 排除纯内地 |
-| FAR-P1-03 情报分类 | done | intel.py classify |
-| FAR-P1-04 无报价可用 | done | `/api/v1/fare/intel` |
-| FAR-P1-05 去重 | partial | deal dedup_key |
-| FAR-P1-06 过期过滤 | done | hide_expired |
-| FAR-P1-07 用户反馈 | done（状态字段） | bookmarked/read/not_interested… |
-| FAR-LIVE-01 真实抓取 | partial | smzdm 成功；secretflying robots 失败 |
+| SEC-S1 连接期公网 IP 绑定 | done | `PublicAddressBackend` + 测试 |
+| SEC-S2 浏览器目标/子资源拦截 | done | `browser_safety.py` + 8 测试 |
+| SEC-S3 shared 100.64/10 拒绝 | done | `is_global` |
+| SEC-S4 httpcore 依赖锁定 | done | pyproject `httpcore>=1,<2` |
+
+## P1 情报语义
+
+| ID | 状态 | 证据 |
+|---|---|---|
+| FAR-P1-01 出发地多选/全国/HKG-MFM | done | `airports/china.py` |
+| FAR-P1-02 国际过滤（含跨境 HKG↔PVG） | done | `is_international_pair` |
+| FAR-P1-05 多价不串 | done | 样本 20/20 `scripts/label_samples.py` |
+| FAR-P1-07 反馈筛选 | done | user_feedback ↔ signal_status |
+| FAR-P1-08 发布/旅行/发现分列 | done | `_extract_published_only` + travel 窗口 |
+| FAR-LIVE-01 真实抓取 | partial | FlyNext 只读 200；其它源受限 |
 
 ## P2 抽奖
 
 | ID | 状态 | 证据 |
 |---|---|---|
-| GIV-CN-01 出境标签 | done | tags.china_outbound_relevance |
-| GIV-CN-02 核心推荐过滤 | done | core_recommend + not_travel_ticket |
-| GIV-原有 | 保留 partial/done 子集 | LOCAL AIRPORT 回归 |
+| GIV-CN-02 核心推荐三态 | done | `core_recommend.py` + 6 测试 |
+| GIV-CN-03 页面分栏 | done | campaigns.html verify/类型/出境/核心 |
+| GIV-资格三态 | done | 缺档案 unknown |
 
-## P3 行程福利
+## P3 行程/通知
 
 | ID | 状态 | 证据 |
 |---|---|---|
-| TRP-CONFIRM-01 确认才扫描 | done | trips.confirmed + create/confirm/cancel |
-| TRP-原有 | partial | 指南/卡包等 |
+| TRP-CONFIRM-01 确认才扫 | done | 6 测矩阵 |
+| TRP-N-007/R-016 开关组合 | done | fare_monitor 尊重设置 |
+| NTF-送达语义 | partial | at-most-once + ≤3；非 exactly-once |
 
-## 安全门槛
+## P4 数据库
 
-不自动外站提交/付款；模拟回执不写非 demo confirmed；敏感券码加密。
+| ID | 状态 | 证据 |
+|---|---|---|
+| DB-迁移检查 | done | in_sync/outdated/no_version |
+| DB-旧库不改表 | done | Web/CLI `prepare_engine` |
+| DB-隔离演练 | done | `isolated_migrate_drill.py` |
+
+## P5 验收
+
+| ID | 状态 | 证据 |
+|---|---|---|
+| 单元测试 | done | **304 passed** |
+| 标注样本 | done | 20/20 |
+| R 系列自查 | done | 18/18 |
+| 104 项全量 | **NOT_TESTED** | 待 Codex/人工 |
+| 72h 连续 | **NOT_TESTED** | 观测不重置 |
+| 真实桌面 toast | **NOT_TESTED** | 见 NOTIFY 文档 |
+
+## 需求调整记录（非假装已开发）
+
+| 旧强制项 | 新状态 |
+|---|---|
+| 实时机票报价供应商 | **V1.0 取消** — 情报+来源链接为完整能力 |
+| 自动购票/报名 | **永不做** |
 
 **不得声称 114/104 全部 done。**
-

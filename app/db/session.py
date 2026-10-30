@@ -44,7 +44,7 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 def check_alembic_head(settings: Settings) -> dict:
     """R-014：显式比较当前版本与 head；缺版本/过旧/未知分别报告。"""
-    from pathlib import Path as _P
+    from pathlib import Path as _Path
 
     path = sqlite_path(settings)
     out = {
@@ -60,7 +60,7 @@ def check_alembic_head(settings: Settings) -> dict:
         from alembic.config import Config
         from alembic.script import ScriptDirectory
 
-        root = _P(__file__).resolve().parents[1]
+        root = _Path(__file__).resolve().parents[1]
         cfg = Config(str(root / "alembic.ini")) if (root / "alembic.ini").exists() else Config()
         cfg.set_main_option("script_location", str(root / "alembic"))
         script = ScriptDirectory.from_config(cfg)
@@ -126,8 +126,9 @@ def ensure_migrations_or_warn(settings: Settings) -> dict:
     if state == "no_version_table":
         if getattr(settings, "allow_auto_migrate", False):
             try:
-                from alembic import command
                 from alembic.config import Config as _Cfg
+
+                from alembic import command
 
                 root = Path(__file__).resolve().parents[1]
                 ini = root / "alembic.ini"
@@ -150,6 +151,16 @@ def ensure_migrations_or_warn(settings: Settings) -> dict:
             "hint": f"当前 {report.get('alembic_version')} ≠ head {report.get('head')}；备份后 python -m alembic upgrade head",
         }
     return {**report, "action": "error"}
+
+
+def prepare_engine(settings: Settings) -> tuple[Engine, sessionmaker[Session], dict]:
+    """CLI/Web 统一：新库才 create_all；已有库不静默改表；返回迁移报告。"""
+    report = ensure_migrations_or_warn(settings)
+    engine = create_db_engine(settings)
+    if report.get("action") == "create_all_new_db":
+        init_db(engine)
+    factory = make_session_factory(engine)
+    return engine, factory, report
 
 
 def init_db(engine: Engine) -> None:

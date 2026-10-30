@@ -106,7 +106,9 @@ def fill_form_with_playwright(
         target = uri
     else:
         try:
-            assert_public_http_url(target)
+            from app.core.browser_safety import BrowserTargetError, validate_browser_target
+
+            validate_browser_target(target)
         except Exception as exc:
             return BrowserResult(False, plan.mode, message=str(exc))
 
@@ -174,6 +176,10 @@ def fill_form_with_playwright(
             if target.startswith("file:"):
                 page.goto(target)
             else:
+                from app.core.browser_safety import make_route_guard_sync
+
+                origin = "/".join(target.split("/")[:3])
+                make_route_guard_sync(page, origin)
                 page.goto(target, wait_until="domcontentloaded", timeout=30000)
             for f in plan.fields:
                 sel = f"#{f.field_name}, [name='{f.field_name}']"

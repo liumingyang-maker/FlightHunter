@@ -2,10 +2,10 @@
 {% block title %}找机会{% endblock %}
 {% block content %}
 <div class="page-head"><h1>找机会（抽奖活动期）</h1></div>
-<p class="muted">资格为三态：符合 / 不符合 / 需核实。未找到限制 ≠ 明确不限。聚合线索 ≠ 已官方核实。</p>
+<p class="muted">资格为三态：符合 / 不符合 / 需核实。未找到限制 ≠ 明确不限。聚合线索 ≠ 已官方核实。数据来源与验证状态分列。</p>
 {% if rounds %}
 <table>
-  <thead><tr><th>标题</th><th>线索主办方</th><th>链接</th><th>核实状态</th><th>数据类型</th></tr></thead>
+  <thead><tr><th>标题</th><th>线索主办方</th><th>链接</th><th>核实状态</th><th>数据类型</th><th>内地出境</th><th>核心</th></tr></thead>
   <tbody>
     {% for r in rounds %}
     <tr>
@@ -20,8 +20,15 @@
           <span class="muted" title="聚合线索，非官方报名地址">无线索链接</span>
         {% endif %}
       </td>
-      <td><span class="badge">{{ r.verify_status }}</span></td>
-      <td>{% if r.demo_only %}<span class="badge warn">fixture</span>{% elif r.verify_status == 'verified' %}已核实{% else %}<span class="badge">线索/待核实</span>{% endif %}</td>
+      <td>
+        {% if r.demo_only %}<span class="badge warn">fixture</span>
+        {% elif r.verify_status == 'verified' %}<span class="badge">verified</span>
+        {% elif r.verify_status == 'auto_extracted' %}<span class="badge">auto_extracted</span>
+        {% else %}<span class="badge">candidate/待核实</span>{% endif %}
+      </td>
+      <td>{% if r.demo_only %}<span class="badge warn">fixture</span>{% else %}<span class="badge">real_source</span>{% endif %}</td>
+      <td><span class="muted">{{ r.china_outbound or "unknown" }}</span></td>
+      <td>{% if r.core_recommend %}<span class="badge">core</span>{% else %}<span class="muted">—</span>{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -180,11 +180,15 @@ def campaigns_page(request: Request, db: DbDep, settings: SettingsDep):
 
     def _view(r: CampaignRound) -> dict:
         source_list = None
+        china_outbound = "unknown"
+        core_recommend = False
         if r.tags:
             try:
                 data = _json.loads(r.tags)
                 if isinstance(data, dict):
                     source_list = data.get("source_list_url")
+                    china_outbound = data.get("china_outbound_relevance") or "unknown"
+                    core_recommend = bool(data.get("core_recommend"))
             except Exception:
                 source_list = None
         return {
@@ -194,6 +198,8 @@ def campaigns_page(request: Request, db: DbDep, settings: SettingsDep):
             "source_list_url": source_list,
             "verify_status": r.verify_status,
             "demo_only": r.demo_only,
+            "china_outbound": china_outbound,
+            "core_recommend": core_recommend,
         }
 
     return templates.TemplateResponse(

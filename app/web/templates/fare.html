@@ -205,7 +205,8 @@
       "<span>" + esc(route) + "</span>" +
       (it.city_match_level ? "<span>适用性:" + esc(it.city_match_level) + "</span>" : "") +
       (it.airline ? "<span>" + esc(it.airline) + "</span>" : "") +
-      (it.reported_total ? "<span>报道价 " + esc(it.reported_total) + esc(it.currency || "") + "</span>" : "") +
+      (it.reported_total ? "<span>报道价 " + esc(it.reported_total) + esc(it.currency || "") + "</span>" : "<span>价格 " + (it.multi_price ? "多价/未知" : "未知") + "</span>") +
+      (it.travel_date_hint ? "<span>出行 " + esc(it.travel_date_hint) + "</span>" : "") +
       "<span>" + esc(timeLabel) + "</span>" +
       "<span>" + (it.is_error_fare ? "风险:自担" : "非实时可买") + "</span>" +
       (it.signal_id ? ' <button type="button" class="btn fb" data-id="' + esc(it.signal_id) + '" data-fb="bookmarked">收藏</button>' : "") +

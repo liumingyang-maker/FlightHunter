@@ -32,6 +32,7 @@ def source_health_report(
         "round_success": 0,
         "round_failed": 0,
         "round_zero_parse": 0,
+        "round_existing": 0,
         "round_valuable": 0,
         "round_cooldown": 0,
         "round_not_attempted": 0,
@@ -115,13 +116,17 @@ def source_health_report(
         "round_success": sum(
             1
             for r in rows
-            if r["attempted_in_window"] and r["last_result"] in {"ok", "ok_zero", "ok_valuable"}
+            if r["attempted_in_window"]
+            and r["last_result"] in {"ok", "ok_zero", "ok_valuable", "ok_existing"}
         ),
         "round_failed": sum(
             1 for r in rows if r["attempted_in_window"] and r["last_result"] == "failed"
         ),
         "round_zero_parse": sum(
             1 for r in rows if r["attempted_in_window"] and r["last_result"] == "ok_zero"
+        ),
+        "round_existing": sum(
+            1 for r in rows if r["attempted_in_window"] and r["last_result"] == "ok_existing"
         ),
         "round_valuable": sum(
             1 for r in rows if r["attempted_in_window"] and r["last_result"] == "ok_valuable"
