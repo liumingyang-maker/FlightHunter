@@ -71,6 +71,17 @@ def health(settings: SettingsDep):
     return _ok({"status": "up", "demo_mode": settings.app.demo_mode})  # type: ignore[attr-defined]
 
 
+@router.get("/ops/source-health")
+def ops_source_health(
+    db: DbDep,
+    module: str = Query("fare"),
+    window_hours: int = Query(24, ge=1, le=720),
+):
+    from app.services.ops.source_health import source_health_report
+
+    return _ok(source_health_report(db, module=module or None, window_hours=window_hours))
+
+
 @router.get("/ops/status")
 def ops_status(db: DbDep):
     from app.services.ops.status import system_status
@@ -366,6 +377,27 @@ def fare_intel(
             "mode": "intel_no_live_quote",
         }
     )
+
+
+@router.post("/fare/intel/{signal_id}/feedback")
+def fare_intel_feedback(
+    signal_id: str,
+    db: DbDep,
+    feedback: str = Query(..., description="bookmarked|read|not_interested|expired_reported|price_mismatch_reported"),
+):
+    from app.services.fare.intel import apply_user_feedback
+
+    try:
+        s = apply_user_feedback(db, signal_id, feedback)
+        db.commit()
+        return _ok({"id": s.id, "signal_status": s.signal_status})
+    except Exception as exc:
+        db.rollback()
+        from app.core.errors import FlightHunterError
+
+        if isinstance(exc, FlightHunterError):
+            raise HTTPException(status_code=400, detail=exc.to_dict()) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/fare-deals")

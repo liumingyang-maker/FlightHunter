@@ -193,6 +193,8 @@ def ingest_fetch_result(
         existing.payload_excerpt = (
             (result.text or "")[:4000] if result.text else existing.payload_excerpt
         )
+        source.last_seen_at = now
+        source.consecutive_failures = 0
         session.flush()
         return existing
 
@@ -694,6 +696,10 @@ async def fetch_source(
         }
 
     result = await adapter.fetch(source.base_url)
+    now = utc_now()
+    source.last_attempt_at = now
+    if not result.ok:
+        source.last_result = "failed"
     cand = ingest_fetch_result(session, source, result, module=module)
     # 相对链接基准：优先最终 URL（重定向后）
     parse_base = (result.final_url or source.base_url) if result.ok else source.base_url
@@ -750,7 +756,19 @@ async def fetch_source(
                 session, source, parsed, candidate_url=cand.url if cand else None
             )
 
-    source.last_fetch_at = utc_now()
+    # 统计口径：仅成功读取写 last_fetch_at；解析>0 才算有价值
+    persisted_total = signals_persisted + offers_persisted + raffles_persisted
+    if result.ok:
+        source.last_fetch_at = now
+        source.last_success_at = now
+        source.last_signal_count = int(persisted_total or 0)
+        if persisted_total and persisted_total > 0:
+            source.last_valuable_at = now
+            source.last_result = "ok_valuable"
+        else:
+            source.last_result = "ok_zero"
+    else:
+        source.last_result = "failed"
     session.flush()
 
     preview = [
@@ -811,6 +829,8 @@ async def run_discovery(
             interval_h = max(1, s.fetch_interval_hours or 24)
             last = ensure_aware_utc(s.last_fetch_at)
             if last and (now - last) < _td(hours=interval_h):
+                s.last_result = "skipped_cooldown"
+                s.last_attempt_at = now
                 continue
         sources.append(s)
         if len(sources) >= limit:

@@ -25,7 +25,13 @@ class Source(Base, UUIDPk, TimestampMixin):
     status: Mapped[str] = mapped_column(String(40), default="active")
     fetch_interval_hours: Mapped[int] = mapped_column(Integer, default=24)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # last_fetch_at = 最近一次**成功**读取（历史/本轮成功口径）
     last_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_valuable_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_signal_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_result: Mapped[str | None] = mapped_column(String(40))  # ok|ok_zero|failed|skipped_cooldown
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
     notes: Mapped[str | None] = mapped_column(Text)
     module: Mapped[str] = mapped_column(

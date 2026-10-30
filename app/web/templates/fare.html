@@ -155,13 +155,22 @@
         "<h3>" + catBadge(it.category) + " " + (it.title || "") + "</h3>" +
         '<div class="intel-meta">' +
         "<span>" + route + "</span>" +
+        (it.city_match_level ? "<span>城市匹配:" + it.city_match_level + "</span>" : "") +
         (it.airline ? "<span>航司:" + it.airline + "</span>" : "") +
         (it.reported_total ? "<span>报道价 " + it.reported_total + (it.currency || "") + "</span>" : "") +
         "<span>" + (it.published_at || it.found_at || "") + "</span>" +
         "<span>" + (it.is_live_bookable_price === false ? "非实时可买" : "") + merged + "</span>" +
+        (it.signal_status && it.signal_status !== "parsed" && it.signal_status !== "discovered"
+          ? "<span>状态:" + it.signal_status + "</span>" : "") +
         "</div>" +
         '<p style="margin:6px 0;font-size:14px">' + (it.summary_zh || "") + "</p>" +
-        '<div class="intel-links">' + links + "</div>";
+        '<div class="intel-links">' + links +
+        (it.signal_id
+          ? ' <button type="button" class="btn fb" data-id="' + it.signal_id + '" data-fb="bookmarked">收藏</button>' +
+            ' <button type="button" class="btn fb" data-id="' + it.signal_id + '" data-fb="read">已读</button>' +
+            ' <button type="button" class="btn fb" data-id="' + it.signal_id + '" data-fb="not_interested">不感兴趣</button>'
+          : "") +
+        "</div>";
       box.appendChild(el);
     });
   }
@@ -183,6 +192,22 @@
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pref)); } catch (e) {}
     load(pref);
   }
+  document.getElementById("intel-list").addEventListener("click", async (e) => {
+    const btn = e.target.closest("button.fb");
+    if (!btn) return;
+    const id = btn.getAttribute("data-id");
+    const fb = btn.getAttribute("data-fb");
+    try {
+      const r = await fetch("/api/v1/fare/intel/" + id + "/feedback?feedback=" + encodeURIComponent(fb), {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (r.ok) {
+        btn.textContent = "✓ " + btn.textContent.replace("✓ ", "");
+        btn.disabled = true;
+      }
+    } catch (err) {}
+  });
   $("btn-apply").addEventListener("click", saveAndLoad);
   $("btn-reset").addEventListener("click", () => { applyUI(DEFAULT); saveAndLoad(); });
   $("btn-clear").addEventListener("click", () => {

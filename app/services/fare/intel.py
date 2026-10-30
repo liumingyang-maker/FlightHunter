@@ -278,6 +278,22 @@ def build_intel_view(
             continue
         if not match.get("match") and s.origin_airport:
             continue
+        # 明确支持该城市：标题含城市名且 origin 匹配，或 origin 精确
+        # 多城市/全国：origin 为空但标题含「全国/多地」或匹配 preferred 中任一城市中文名
+        city_match_level = "origin_unknown"
+        title = s.title or ""
+        if s.origin_airport and s.origin_airport.upper() in filt.preferred_origins:
+            city_match_level = "explicit_city"
+        elif not s.origin_airport and any(
+            k in title
+            for k in ("全国", "多地", "北上广", "全国多地", "China-wide", "nationwide")
+        ):
+            city_match_level = "national_multi_city_pending"
+        elif not s.origin_airport and any(
+            c in title
+            for c in ("重庆", "成都", "上海", "北京", "广州", "深圳", "杭州", "武汉", "昆明")
+        ):
+            city_match_level = "city_named_in_title_pending_iata"
         age_score = 0
         if s.published_at_utc:
             pub = s.published_at_utc
@@ -319,6 +335,7 @@ def build_intel_view(
                 "signal_status": s.signal_status,
                 "priority": priority,
                 "is_live_bookable_price": False,  # 情报模式硬约束
+                "city_match_level": city_match_level,
                 "note": "报道/社区价格，请点击来源自行核实并购买",
             }
         )

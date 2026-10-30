@@ -293,6 +293,26 @@ def migrate(
         engine.dispose()
 
 
+@app.command("source-health")
+def source_health_cmd(
+    config: str | None = typer.Option(None, "--config"),
+    module: str = typer.Option("fare", "--module"),
+    window_hours: int = typer.Option(24, "--window-hours"),
+) -> None:
+    """来源健康：历史成功 vs 本轮成功/失败/冷却/零解析/有价值。"""
+    settings = load_settings(config, project_root=_project_root())
+    from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
+    from app.services.ops.source_health import source_health_report
+
+    engine = create_db_engine(settings)
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        report = source_health_report(session, module=module or None, window_hours=window_hours)
+        console.print_json(json.dumps(report, ensure_ascii=False, default=str))
+    engine.dispose()
+
+
 @app.command("confirm-trip")
 def confirm_trip_cmd(
     trip_id: str = typer.Argument(...),

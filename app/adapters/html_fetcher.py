@@ -322,7 +322,47 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
     if not has_deal_kw and not has_flight_kw:
         return None
     codes = [c for c in _IATA_RE.findall(label) if c.isalpha() and c.isupper()]
-    skip = {"AND", "THE", "BUG", "YQ", "USA", "USD", "CNY", "VIP", "APP"}
+    skip = {
+        "AND",
+        "THE",
+        "BUG",
+        "YQ",
+        "USA",
+        "USD",
+        "CNY",
+        "VIP",
+        "APP",
+        "MAX",
+        "MIN",
+        "CEO",
+        "NEW",
+        "OLD",
+        "FAQ",
+        "PDF",
+        "IPO",
+        "ETF",
+        "GDP",
+        "UTC",
+        "GMT",
+        "FOR",
+        "NOT",
+        "ALL",
+        "ONE",
+        "TWO",
+        "SET",
+        "DAY",
+        "GET",
+        "WIN",
+        "TOP",
+        "BUS",
+        "CAR",
+        "TAX",
+        "FEES",
+        "FREE",
+        "SALE",
+        "DEAL",
+        "HOT",
+    }
     codes = [c for c in codes if c not in skip]
     origin = codes[0] if len(codes) >= 2 else None
     dest = codes[1] if len(codes) >= 2 else None

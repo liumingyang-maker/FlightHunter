@@ -38,7 +38,10 @@ def _state_dir(settings: Settings) -> Path:
     """鉴权/会话状态目录：隔离库旁路，避免测试复用正式 auth.json。"""
     auth_dir = getattr(settings.auth, "state_dir", None)
     if auth_dir:
-        return Path(auth_dir)
+        p = Path(auth_dir)
+        if not p.is_absolute():
+            p = Path(settings.project_root) / p
+        return p
     db = Path(settings.storage.sqlite_path)
     if not db.is_absolute():
         db = Path(settings.project_root) / db
