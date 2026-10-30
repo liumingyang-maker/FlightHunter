@@ -162,6 +162,7 @@ def parse_multi_round_event_html(
     page_url: str,
     now: datetime | None = None,
     poster_facts: dict[str, Any] | None = None,
+    auto_extract: dict[str, Any] | None = None,
 ) -> MultiRoundParseResult:
     """把同页 Event1/Event2/Period 拆成独立轮次；禁止把 A 轮机票与 B 轮礼券日期拼接。"""
     from bs4 import BeautifulSoup
@@ -181,8 +182,10 @@ def parse_multi_round_event_html(
     text = soup.get_text("\n", strip=True)
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
 
-    # 检测是否像 VISITKOREA 详情（含中文美食活动文案）
-    if not re.search(r"event|period|prize|winner|机票|活动|专栏|quiz", text, re.I):
+    # 检测是否像 VISITKOREA 详情（含中文美食活动文案）；有 auto_extract 时也可继续
+    if not auto_extract and not re.search(
+        r"event|period|prize|winner|机票|活动|专栏|quiz|giveaway|sweep", text, re.I
+    ):
         out.notes.append("no_event_markers")
         return out
 
@@ -444,6 +447,70 @@ def parse_multi_round_event_html(
         if not r.residency_restriction and page_res:
             r.residency_restriction = page_res
             r.nationality_restriction = page_res
+
+    # 自动证据提取结果（OCR/HTML，非人工 poster_facts）
+    if auto_extract:
+        opens = _parse_date_flexible(str(auto_extract.get("opens") or auto_extract.get("opens_iso") or ""))
+        closes = _parse_date_flexible(str(auto_extract.get("closes") or auto_extract.get("closes_iso") or ""))
+        status = auto_extract.get("open_status") or open_status_from_dates(opens, closes, now_n)
+        if status not in {"open", "closed", "pending_verification", "unknown"}:
+            status = "unknown"
+        # 无关闭日期禁止 closed
+        if status == "closed" and not closes:
+            status = "pending_verification"
+        pr = EventRoundRules(
+            round_label="auto_extracted_event",
+            edition_key="auto_extract",
+            title=str(auto_extract.get("title") or "auto extracted event")[:200],
+            organizer_name=organizer,
+            prize_summary=str(auto_extract.get("prize_summary") or "auto extracted")[:200],
+            prize_is_flight=bool(auto_extract.get("prize_is_flight")),
+            prize_is_gift_or_other=auto_extract.get("prize_is_flight") is False,
+            winners_count=int(auto_extract["winners_count"])
+            if str(auto_extract.get("winners_count") or "").isdigit()
+            else None,
+            tickets_per_winner=int(auto_extract["tickets_per_winner"])
+            if str(auto_extract.get("tickets_per_winner") or "").isdigit()
+            else None,
+            opens_raw=str(auto_extract.get("opens") or auto_extract.get("opens_iso") or ""),
+            closes_raw=str(auto_extract.get("closes") or auto_extract.get("closes_iso") or ""),
+            opens_iso=opens.isoformat() if opens else None,
+            closes_iso=closes.isoformat() if closes else None,
+            free_entry=auto_extract.get("free_entry"),
+            purchase_required=False if auto_extract.get("free_entry") else None,
+            residency_restriction=auto_extract.get("residency_text"),
+            entry_channel=auto_extract.get("entry_channel"),
+            open_status=status,
+            active_now=True if status == "open" else (False if status == "closed" else None),
+            requires_login_to_enter=bool(auto_extract.get("requires_login")),
+            evidence_quote=str(auto_extract.get("evidence_quote") or "auto evidence extract")[:800],
+            tags={
+                "source": "automated_evidence_extract",
+                "human_review_required": bool(auto_extract.get("human_review_required", True)),
+                "confidence": auto_extract.get("confidence", "medium"),
+            },
+            blocked_notes=[]
+            if status == "open"
+            else ["auto_extract_not_open"],
+        )
+        if auto_extract.get("human_review_required"):
+            pr.blocked_notes.append("human_review_required")
+        updated = False
+        for r in rounds:
+            if r.prize_is_flight and not r.opens_iso and pr.opens_iso:
+                r.opens_raw = pr.opens_raw
+                r.closes_raw = pr.closes_raw
+                r.opens_iso = pr.opens_iso
+                r.closes_iso = pr.closes_iso
+                r.open_status = pr.open_status
+                r.active_now = pr.active_now
+                r.blocked_notes.append("dates_from_automated_extract")
+                updated = True
+        if not updated and not any(
+            r.prize_is_flight and r.open_status in {"open", "pending_verification"} for r in rounds
+        ):
+            rounds.append(pr)
+        out.notes.append("auto_extract_applied")
 
     # 海报证据（仅操作员从官方海报读出的日期/奖品；非注入活动 URL）
     if poster_facts:

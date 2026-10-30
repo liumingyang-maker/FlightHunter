@@ -581,8 +581,9 @@ def raffle_multi_round_check(
     poster_facts_json: str | None = typer.Option(
         None,
         "--poster-facts-json",
-        help='官方海报人工读出的JSON，如 {"opens":"2026-10-26","closes":"2026-11-22","winners":3,"tickets":2}',
+        help="人工复核渠道（非自主提取）；自主路径请用 raffle-auto-extract",
     ),
+    auto: bool = typer.Option(True, "--auto/--no-auto", help="自动 OCR/HTML 证据提取"),
 ) -> None:
     """同页多活动/多期拆分核验；禁止跨期拼接机票奖品与截止日期。"""
     import asyncio
@@ -609,11 +610,58 @@ def raffle_multi_round_check(
         raise typer.Exit(1)
     now = datetime.now(UTC).replace(tzinfo=None)
     poster = _json.loads(poster_facts_json) if poster_facts_json else None
+    auto_payload = None
+    if auto and not poster:
+        from app.services.raffle.evidence_extract import extract_official_evidence
+
+        async def _fetch_bytes(u: str) -> bytes:
+            import httpx
+
+            r = httpx.get(
+                u,
+                headers={"User-Agent": "FlightHunter-Bot/1.0 (evidence extract)"},
+                timeout=40,
+                follow_redirects=True,
+            )
+            r.raise_for_status()
+            return r.content
+
+        ext = asyncio.run(
+            extract_official_evidence(
+                result.text or "",
+                page_url=result.final_url or url,
+                fetch_bytes=_fetch_bytes,
+                now=now,
+            )
+        )
+        auto_payload = ext.to_dict()
+        auto_extract = {
+            "title": ext.prize_summary or "auto extracted",
+            "opens": ext.opens_raw,
+            "closes": ext.closes_raw,
+            "opens_iso": ext.opens_iso,
+            "closes_iso": ext.closes_iso,
+            "prize_summary": ext.prize_summary,
+            "prize_is_flight": ext.prize_is_flight,
+            "winners_count": ext.winners_count,
+            "tickets_per_winner": ext.tickets_per_winner,
+            "free_entry": ext.free_entry,
+            "residency_text": ext.residency_text,
+            "entry_channel": ext.entry_channel,
+            "open_status": ext.open_status,
+            "human_review_required": ext.human_review_required,
+            "confidence": "high" if ext.opens_iso and ext.closes_iso else "medium",
+            "evidence_quote": (ext.ocr_text_sample or "")[:500],
+            "requires_login": "Join Now" in (ext.ocr_text_sample or "") or False,
+        }
+    else:
+        auto_extract = None
     parsed = parse_multi_round_event_html(
         result.text or "",
         page_url=result.final_url or url,
         now=now,
         poster_facts=poster,
+        auto_extract=auto_extract,
     )
     rounds_out = []
     for r in parsed.rounds:
@@ -645,7 +693,9 @@ def raffle_multi_round_check(
         "now": now.isoformat(),
         **parsed.to_dict(),
         "rounds": rounds_out,
-        "note": "有效≠eligible；eligible≠已报名；不自动提交",
+        "automated_evidence": auto_payload,
+        "manual_poster_facts_used": bool(poster),
+        "note": "有效≠eligible；eligible≠已报名；不自动提交；poster-facts-json 仅为人工复核",
     }
     # open_flight_rounds 依赖 rounds 字段在 to_dict 后仍可用
     payload["open_flight_rounds"] = [
