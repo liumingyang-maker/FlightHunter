@@ -63,7 +63,15 @@ def test_route_guard_blocks_cross_origin_private():
     assert route.action == "abort"
 
 
-def test_route_guard_allows_same_origin():
+def test_route_guard_allows_same_origin(monkeypatch):
+    """同源放行的前提是 DNS 校验通过（C14-01）。"""
+    import app.core.browser_safety as bs
+
+    monkeypatch.setattr(
+        bs, "resolve_and_assert_public_host", lambda host, **kw: ["203.0.113.1"]
+    )
+    monkeypatch.setattr(bs, "assert_public_http_url", lambda url, **kw: None)
+
     class _Req:
         url = "https://public.example/page"
 

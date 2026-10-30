@@ -124,6 +124,90 @@ SAMPLES: list[dict] = [
         "currency": "HKD",
         "note": "单目的地",
     },
+    # --- C14-06 扩充（≥30）---
+    {
+        "label": "东京 机票 特价 HK$2200 起 发佈日期·2026-10-28",
+        "price": 2200.0,
+        "currency": "HKD",
+        "published": "2026-10-28",
+        "note": "单目的地+发布",
+    },
+    {
+        "label": "新加坡 机票 ¥1800 优惠",
+        "price": 1800.0,
+        "currency": "CNY",
+        "note": "人民币单票价",
+    },
+    {
+        "label": "台北 机票 3.2K 含税",
+        "price": 3200.0,
+        "currency": "CNY",
+        "note": "千元写法",
+    },
+    {
+        "label": "20KG 托运行李 东京机票 HK$2150",
+        "price": 2150.0,
+        "currency": "HKD",
+        "forbid_price": [20000.0],
+        "note": "20KG 不作价",
+    },
+    {
+        "label": "上海→东京 机票 优惠",
+        "origins": ["PVG"],
+        "note": "显式出发",
+    },
+    {
+        "label": "香港→台北 来回 HK$1200",
+        "price": 1200.0,
+        "currency": "HKD",
+        "note": "单航线",
+    },
+    {
+        "label": "Peach 大阪→东京 低价",
+        "forbid_origins": ["HKG"],
+        "note": "Peach 不映射 HKG",
+    },
+    {
+        "label": "澳门出发 台北 HK$900 机票",
+        "origins": ["MFM"],
+        "price": 900.0,
+        "currency": "HKD",
+        "note": "澳门出发",
+    },
+    {
+        "label": "国泰 航班 优惠",
+        "forbid_origins": ["HKG"],
+        "note": "纯品牌不证明出发",
+    },
+    {
+        "label": "新加坡→曼谷 机票特惠",
+        "forbid_origins": ["HKG"],
+        "note": "境外-境外",
+    },
+    {
+        "label": "北京出发 首尔 HK$1100 机票",
+        "origins": ["PEK"],
+        "price": 1100.0,
+        "currency": "HKD",
+        "note": "内地出发国际",
+    },
+    {
+        "label": "最多減HK$300 曼谷机票",
+        "price": None,
+        "note": "减免非票价",
+    },
+    {
+        "label": "活动日期 2027-03-01 机票",
+        "published": None,
+        "note": "活动日非发布",
+    },
+    {
+        "label": "发佈日期: 2026-01-15 香港→东京机票 HK$1800",
+        "price": 1800.0,
+        "currency": "HKD",
+        "published": "2026-01-15",
+        "note": "发布+单航线",
+    },
 ]
 
 

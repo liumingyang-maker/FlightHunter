@@ -1,9 +1,10 @@
-"""浏览器目标安全：Playwright 自有网络栈无法注入 PublicAddressBackend。
+"""浏览器目标安全（C14-01）：连接期约束 + 默认拒绝。
 
-策略：
-1. 启动前 DNS+公网校验目标主机（连接期另由 route 拦截二次校验）
-2. 同一页面仅允许目标 origin；子资源/重定向到私网一律中断
-3. 文件模拟站（file://）仅本地沙箱路径
+威胁模型（本地个人工具，仅 `automation_policy=allowed` 站点）：
+- 导航/子资源/弹窗/重定向：一律先 URL+DNS 公网校验，再放行
+- 同源请求**同样**校验 DNS（防重绑定）
+- data:/blob:/about: 放行；其它 scheme 默认拒绝
+- 无法绑定「已验证 IP + TLS SNI」时，真实外站浏览器自动化保持 partial/blocked
 """
 
 from __future__ import annotations
@@ -32,8 +33,20 @@ def validate_browser_target(url: str) -> str:
     return url
 
 
+def _validate_request_url(url: str) -> None:
+    """任意浏览器请求（含同源）：scheme/URL/DNS 公网校验。"""
+    parsed = urlparse(url)
+    if parsed.scheme in ("data:", "blob:", "about:"):
+        return
+    if parsed.scheme not in ("http", "https"):
+        raise BrowserTargetError(f"scheme not allowed: {parsed.scheme}")
+    assert_public_http_url(url, field="browser_request")
+    host = (parsed.hostname or "").lower()
+    resolve_and_assert_public_host(host, field="browser_request")
+
+
 def make_route_guard_sync(page: Any, allowed_origin: str) -> Any:
-    """同步 Playwright 拦截：仅放行 allowed_origin 同源 + 公网目标。"""
+    """同步 Playwright 拦截：所有请求（含同源）先验后放行；默认拒绝。"""
 
     def _handler(route: Any) -> None:
         try:
@@ -42,19 +55,23 @@ def make_route_guard_sync(page: Any, allowed_origin: str) -> Any:
             if parsed.scheme in ("data:", "blob:", "about:"):
                 route.continue_()
                 return
-            if parsed.scheme not in ("http", "https"):
-                route.abort()
-                return
-            origin = f"{parsed.scheme}://{parsed.netloc}"
-            if origin == allowed_origin:
-                route.continue_()
-                return
-            assert_public_http_url(req_url, field="browser_subresource")
-            host = (parsed.hostname or "").lower()
-            resolve_and_assert_public_host(host, field="browser_subresource")
+            # C14-01：同源也要 DNS 校验，禁止直接 continue
+            _validate_request_url(req_url)
             route.continue_()
         except Exception:
             route.abort()
 
+    def _popup_handler(route: Any) -> None:
+        # 弹窗/新窗口目标一律拒绝（默认拒绝策略）
+        try:
+            _validate_request_url(route.request.url)
+            route.abort()
+        except Exception:
+            route.abort()
+
     page.route("**/*", _handler)
+    try:
+        page.context.route("**/*", _popup_handler)
+    except Exception:
+        pass
     return page

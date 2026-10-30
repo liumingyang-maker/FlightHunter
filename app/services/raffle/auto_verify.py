@@ -381,6 +381,20 @@ async def verify_round_auto(
             "guide_zh_content": _build_zh_guide(ext, tags, entry_url),
         }
     )
+    # C14-03/04：核验后用真实证据重算 core_recommend（接业务流）
+    from app.services.raffle.core_recommend import evaluate_core_recommend
+
+    core = evaluate_core_recommend(
+        title=round_.title or "",
+        evidence_text=(ext.prize_summary or "") + "\n" + (ext.residency_text or ""),
+        prize_is_flight=auto_extract.get("prize_is_flight"),
+        official_url=round_.official_url,
+        verify_status="auto_extracted",
+        source_kind=(tags.get("source_kind") or "official_page"),
+    )
+    tags["china_outbound_relevance"] = core["china_outbound"]
+    tags["core_recommend"] = core["core_recommend"]
+    tags["core_recommend_reasons"] = core["reasons"]
     # open_status 写入便于 API
     if status == "open":
         tags["active_now"] = True

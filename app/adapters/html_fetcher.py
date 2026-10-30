@@ -352,7 +352,7 @@ def _parse_any_date(s: str) -> datetime | None:
 
 # N-006/R-006：仅明确发布标签；更新/旅行/活动日期不得写入 published_at
 _PUBLISH_LABEL = re.compile(
-    r"(?:發佈日期|发布日期|發布日期|公佈日期|公布日期|發佈|发布|發布|公佈|公布|posted\s+at|published(?:\s+at)?|"
+    r"(?:發佈日期|发布日期|發布日期|发佈日期|公佈日期|公布日期|發佈|发布|發布|发佈|公佈|公布|posted\s+at|published(?:\s+at)?|"
     r"date\s+posted|post\s*date|publication\s+date)"
     r"\s*[:：·.]?\s*"
     r"(20\d{2}年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|20\d{2}[./-]\d{1,2}[./-]\d{1,2})",

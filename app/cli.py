@@ -14,6 +14,7 @@ from rich.table import Table
 
 from app import __version__
 from app.config import load_settings, sqlite_path
+from app.db.cli_migrate_hint import report_migration
 
 app = typer.Typer(
     name="flighthunter",
@@ -71,14 +72,20 @@ def doctor(
     table.add_row("行程监控", "启用" if settings.trip_monitoring.enabled else "停用")
     table.add_row("机票雷达", "启用" if settings.airfare_radar.enabled else "停用")
 
-    # 引擎探测
+    # C14-02：doctor 只读，不 create_all、不迁移；仅报告版本
     try:
-        from app.db.session import create_db_engine, init_db, prepare_engine
+        from app.db.session import check_alembic_head
 
-        engine = create_db_engine(settings)
-        init_db(engine)
-        table.add_row("数据库连接", "OK")
-        engine.dispose()
+        report = check_alembic_head(settings)
+        table.add_row("数据库连接", "OK" if report.get("exists") else "OK（新库尚未创建）")
+        table.add_row("迁移版本", str(report.get("alembic_version") or "（无版本表）"))
+        table.add_row("Alembic head", str(report.get("head") or "unknown"))
+        table.add_row("迁移状态", str(report.get("state") or "unknown"))
+        if report.get("state") in ("no_version_table", "outdated"):
+            table.add_row(
+                "迁移提示",
+                "请备份后显式执行: python -m alembic upgrade head（doctor 不改表）",
+            )
     except Exception as exc:
         table.add_row("数据库连接", f"FAIL: {exc}")
 
@@ -98,9 +105,13 @@ def seed(
     """初始化数据库并写入安全种子（demo fixture）。"""
     settings = load_settings(config, project_root=_project_root())
     from app.db.seed import import_design_fixtures, seed_safe_fixtures
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     root = _project_root()
 
     with session_scope(factory) as session:
@@ -136,11 +147,15 @@ def discover(
     settings = load_settings(config, project_root=_project_root())
     from app.core.ids import idempotency_key, new_id
     from app.core.timeutils import utc_now
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.models import TaskRun
     from app.services.discovery.service import run_discovery
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
 
     with session_scope(factory) as session:
         console.print(f"发现模式: {'DRY-RUN' if dry_run else 'EXECUTE'} · 模块: {module}")
@@ -284,7 +299,7 @@ def migrate(
         command.upgrade(cfg, revision)
         console.print("[green]Alembic 迁移完成[/green]")
     else:
-        from app.db.session import create_db_engine, init_db, prepare_engine
+        from app.db.session import create_db_engine, init_db
 
         engine = create_db_engine(settings)
         init_db(engine)
@@ -300,10 +315,14 @@ def source_health_cmd(
 ) -> None:
     """来源健康：历史成功 vs 本轮成功/失败/冷却/零解析/有价值。"""
     settings = load_settings(config, project_root=_project_root())
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.services.ops.source_health import source_health_report
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     with session_scope(factory) as session:
         report = source_health_report(session, module=module or None, window_hours=window_hours)
         console.print_json(json.dumps(report, ensure_ascii=False, default=str))
@@ -317,10 +336,14 @@ def confirm_trip_cmd(
 ) -> None:
     """确认真实行程并启动正式福利/扫描（demo 不可）。"""
     settings = load_settings(config, project_root=_project_root())
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.services.trips.service import confirm_trip
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     with session_scope(factory) as session:
         trip = confirm_trip(session, settings, trip_id)
         session.commit()
@@ -335,10 +358,14 @@ def list_trips(config: str | None = typer.Option(None, "--config")) -> None:
     settings = load_settings(config, project_root=_project_root())
     from sqlalchemy import select
 
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.models import Trip
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     with session_scope(factory) as session:
         trips = session.scalars(select(Trip)).all()
         table = Table(title="行程")
@@ -369,10 +396,14 @@ def scan_due(
 ) -> None:
     """执行到期的行程扫描订阅。--execute 才访问网络来源。"""
     settings = load_settings(config, project_root=_project_root())
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.scheduler.jobs import run_due_scans
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     with session_scope(factory) as session:
         runs = run_due_scans(
             session,
@@ -398,10 +429,14 @@ def intel_quality_cmd(
 ) -> None:
     """国际机票情报质量统计（新发现/城市匹配/过期/重复/链接抽样）。"""
     settings = load_settings(config, project_root=_project_root())
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.services.fare.intel import intel_quality_stats
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     with session_scope(factory) as session:
         console.print_json(json.dumps(intel_quality_stats(session), ensure_ascii=False, default=str))
     engine.dispose()
@@ -430,7 +465,10 @@ def worker(
     import time
 
     settings = load_settings(config, project_root=_project_root())
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.scheduler.jobs import run_due_scans
     from app.services.ops.worker_lock import (
         acquire_worker_lock,
@@ -443,7 +481,8 @@ def worker(
         console.print(f"[red]worker 已在运行，拒绝重复启动: {msg}[/red]")
         raise typer.Exit(2)
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     rounds = 0
     try:
         console.print(
@@ -489,7 +528,10 @@ def demo_browser_e2e(
     from sqlalchemy import select
 
     from app.core.ids import new_id
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.models import Campaign, CampaignRound, Organizer, Profile
     from app.services.entry.browser_pipeline import execute_browser_entry
 
@@ -498,7 +540,8 @@ def demo_browser_e2e(
         console.print("[red]缺少 fixtures/mock_campaign_site/index.html[/red]")
         raise typer.Exit(1)
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     with session_scope(factory) as session:
         profile = session.scalar(select(Profile).limit(1))
         if profile is None:
@@ -575,10 +618,14 @@ def reconcile_stuck(
 ) -> None:
     """将卡在 submitting 的报名尝试全部转为 unknown。"""
     settings = load_settings(config, project_root=_project_root())
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.services.entry.detail import reconcile_all_stuck
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     with session_scope(factory) as session:
         n = reconcile_all_stuck(session)
         session.commit()
@@ -595,10 +642,14 @@ def raffle_provenance(
     import asyncio
 
     settings = load_settings(config, project_root=_project_root())
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.services.raffle.provenance import attempt_official_evidence_batch
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     with session_scope(factory) as session:
         results = asyncio.run(
             attempt_official_evidence_batch(session, settings, limit=limit)
@@ -811,10 +862,14 @@ def jp_benefits_scan(
     import asyncio
 
     settings = load_settings(config, project_root=_project_root())
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.services.trips.jp_benefits import ensure_demo_japan_trip, scan_jp_public_page
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     with session_scope(factory) as session:
         trip = ensure_demo_japan_trip(session, settings)
         session.flush()
@@ -833,10 +888,14 @@ def list_deals(
     settings = load_settings(config, project_root=_project_root())
     from sqlalchemy import select
 
-    from app.db.session import create_db_engine, init_db, make_session_factory, prepare_engine, session_scope
+    from app.db.session import (
+        prepare_engine,
+        session_scope,
+    )
     from app.models import FareDeal
 
-    engine, factory, _mig = prepare_engine(settings)
+    engine, factory, mig = prepare_engine(settings)
+    report_migration(mig)
     with session_scope(factory) as session:
         stmt = select(FareDeal).order_by(FareDeal.last_seen_utc.desc())
         if risk:
