@@ -134,15 +134,25 @@ def trips_page(request: Request, db: DbDep, settings: SettingsDep):
 @router.get("/fare", response_class=HTMLResponse)
 def fare_page(request: Request, db: DbDep, settings: SettingsDep):
     templates = request.app.state.templates
-    deals = db.scalars(select(FareDeal).order_by(FareDeal.last_seen_utc.desc()).limit(50)).all()
+    from app.services.airports.china import expand_origin_selection
+    from app.services.fare.intel import IntelFilter, build_intel_view
+
+    default_origins = list(settings.profiles.default_preferred_departure_airports)
+    intel = build_intel_view(
+        db,
+        IntelFilter(preferred_origins=default_origins, hide_expired=True),
+        limit=30,
+    )
     watches = db.scalars(select(FareWatch).where(FareWatch.enabled == True)).all()  # noqa: E712
     return templates.TemplateResponse(
         request,
         "fare.html",
         {
-            "deals": deals,
+            "intel": intel,
             "watches": watches,
-            "note": "社区爆料 ≠ 实时可买价；无合法报价源时价格为未知",
+            "default_origins": default_origins,
+            "mainland_count": len(expand_origin_selection(china_mainland_all=True)),
+            "note": "情报模式：社区/RSS 报道价 ≠ 实时可买价；请点击来源自行查询",
             "app_name": settings.app.name,
         },
     )

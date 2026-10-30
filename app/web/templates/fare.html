@@ -1,16 +1,59 @@
 {% extends "base.html" %}
-{% block title %}机票雷达{% endblock %}
+{% block title %}国际机票情报{% endblock %}
 {% block content %}
-<div class="page-head"><h1>全球机票捡漏雷达</h1></div>
-<div class="card warn-box">
-  <strong>重要：</strong>{{ note }}。程序不代购、不自动支付/出票；错价/甩尾风险独立展示。
+<div class="page-head">
+  <h1>国际机票情报雷达</h1>
 </div>
+<div class="card warn-box">
+  <strong>情报模式：</strong>{{ note }}。不代购、不支付；疑似错价需自行承担风险。
+</div>
+
+<section class="card" id="origin-panel">
+  <h2>出发地筛选</h2>
+  <p class="muted">默认重庆/成都；「全国出发」仅含中国内地机场；香港/澳门需单独勾选。</p>
+  <div class="origin-row">
+    <label class="chip"><input type="checkbox" id="ckg" value="CKG" checked> 重庆 CKG</label>
+    <label class="chip"><input type="checkbox" id="tfu" value="TFU" checked> 成都 TFU</label>
+    <label class="chip"><input type="checkbox" id="ctu" value="CTU" checked> 成都 CTU</label>
+    <label class="chip"><input type="checkbox" id="pek" value="PEK"> 北京 PEK</label>
+    <label class="chip"><input type="checkbox" id="pvg" value="PVG"> 上海 PVG</label>
+    <label class="chip"><input type="checkbox" id="sha" value="SHA"> 上海 SHA</label>
+    <label class="chip"><input type="checkbox" id="can" value="CAN"> 广州 CAN</label>
+    <label class="chip"><input type="checkbox" id="szx" value="SZX"> 深圳 SZX</label>
+    <label class="chip"><input type="checkbox" id="hgh" value="HGH"> 杭州 HGH</label>
+    <label class="chip"><input type="checkbox" id="wuh" value="WUH"> 武汉 WUH</label>
+    <label class="chip"><input type="checkbox" id="kmg" value="KMG"> 昆明 KMG</label>
+  </div>
+  <div class="origin-row" style="margin-top:12px">
+    <label class="chip strong">
+      <input type="checkbox" id="nationwide"> 全国出发（仅中国内地 · {{ mainland_count }} 机场）
+    </label>
+    <label class="chip hk">
+      <input type="checkbox" id="hkg"> 香港 HKG（独立）
+    </label>
+    <label class="chip mo">
+      <input type="checkbox" id="mfm"> 澳门 MFM（独立）
+    </label>
+  </div>
+  <div class="origin-row" style="margin-top:12px">
+    <button type="button" id="btn-apply" class="btn">应用筛选</button>
+    <button type="button" id="btn-reset" class="btn">恢复默认</button>
+    <button type="button" id="btn-clear" class="btn">清除筛选</button>
+    <span id="origin-status" class="muted"></span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>情报列表 <span class="muted" id="intel-count"></span></h2>
+  <div id="intel-empty" class="muted" hidden>当前筛选下暂无情报。可尝试「全国出发」或清除筛选。</div>
+  <div id="intel-list"></div>
+</section>
 
 <section class="card">
   <h2>航线愿望单</h2>
   {% if watches %}
   <table>
-    <thead><tr><th>名称</th><th>出发</th><th>人数</th><th>状态</th><th>启用</th></tr></thead>
+    <thead><tr><th>名称</th><th>出发</th><th>人数</th><th>状态</th></tr></thead>
     <tbody>
       {% for w in watches %}
       <tr>
@@ -18,35 +61,142 @@
         <td>{{ w.origin_airports }}</td>
         <td>{{ w.adults }}</td>
         <td>{{ w.scan_status }}</td>
-        <td>{{ "是" if w.enabled else "否" }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="muted">暂无启用中的愿望单。</p>
+  <p class="muted">暂无愿望单。情报列表不依赖愿望单。</p>
   {% endif %}
 </section>
 
-<section class="card">
-  <h2>机会列表</h2>
-  {% if deals %}
-  <table>
-    <thead><tr><th>航线</th><th>子类型</th><th>风险</th><th>状态</th><th>购票</th></tr></thead>
-    <tbody>
-      {% for d in deals %}
-      <tr class="{% if d.risk_tier == 'high_risk' %}row-risk{% endif %}">
-        <td>{{ d.origin or "?" }} → {{ d.destination or "?" }}</td>
-        <td>{{ d.offer_subtypes }}</td>
-        <td><span class="badge {{ d.risk_tier }}">{{ d.risk_tier }}</span></td>
-        <td>{{ d.status }}</td>
-        <td>{{ d.booking_status }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted">暂无线索。可通过 <code>POST /api/v1/fare-deals/import-signal</code> 手动导入分享。</p>
-  {% endif %}
-</section>
+<style>
+.origin-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.chip { display:inline-flex; align-items:center; gap:4px; padding:6px 10px; border:1px solid #ccc; border-radius:16px; font-size:14px; cursor:pointer; background:#fff; }
+.chip.strong { background:#e8f4ff; border-color:#4a90d9; }
+.chip.hk { background:#fff4e6; border-color:#d98a2b; }
+.chip.mo { background:#f3e8ff; border-color:#8b5cf6; }
+.btn { padding:8px 14px; border:1px solid #333; border-radius:6px; background:#f5f5f5; cursor:pointer; }
+.intel-item { border-bottom:1px solid #eee; padding:12px 0; }
+.intel-item h3 { margin:0 0 6px; font-size:16px; }
+.intel-meta { font-size:13px; color:#555; display:flex; flex-wrap:wrap; gap:10px; }
+.badge-cat { display:inline-block; padding:2px 8px; border-radius:4px; font-size:12px; background:#eee; }
+.badge-cat.bug { background:#ffe0e0; }
+.badge-cat.fuel { background:#fff0d0; }
+.badge-cat.official { background:#e0f5e0; }
+.intel-links a { margin-right:10px; }
+@media (max-width: 640px) {
+  .chip { font-size:13px; padding:5px 8px; }
+  .origin-row { gap:6px; }
+}
+</style>
+
+<script>
+(function () {
+  const STORAGE_KEY = "fh_fare_origins_v1";
+  const DEFAULT = { codes: ["CKG","TFU","CTU"], nationwide: false, hkg: false, mfm: false };
+  const $ = (id) => document.getElementById(id);
+  const codeBoxes = ["ckg","tfu","ctu","pek","pvg","sha","can","szx","hgh","wuh","kmg"].map((id) => $(id));
+
+  function readUI() {
+    const codes = codeBoxes.filter((c) => c.checked).map((c) => c.value);
+    return {
+      codes,
+      nationwide: $("nationwide").checked,
+      hkg: $("hkg").checked,
+      mfm: $("mfm").checked,
+    };
+  }
+  function applyUI(pref) {
+    const set = new Set(pref.codes || []);
+    codeBoxes.forEach((c) => { c.checked = set.has(c.value); });
+    $("nationwide").checked = !!pref.nationwide;
+    $("hkg").checked = !!pref.hkg;
+    $("mfm").checked = !!pref.mfm;
+  }
+  function buildQuery(pref) {
+    const parts = [];
+    if (pref.nationwide) parts.push("mode=china_all");
+    if (pref.codes && pref.codes.length) parts.push("origins=" + encodeURIComponent(pref.codes.join(",")));
+    if (pref.hkg) parts.push("include_hkg=1");
+    if (pref.mfm) parts.push("include_mfm=1");
+    parts.push("hide_expired=1");
+    parts.push("limit=40");
+    return parts.join("&");
+  }
+  function catBadge(cat) {
+    const map = {
+      suspected_bug_fare: ["疑似错价 Bug Fare", "bug"],
+      fuel_anomaly: ["漏油/燃油异常", "fuel"],
+      official_or_flash_promo: ["官方/限时促销", "official"],
+      community_deal_tip: ["社区爆料", ""],
+      mileage_promo: ["里程促销", ""],
+      hidden_city: ["甩尾风险", "bug"],
+      other_intl_deal: ["其他国际优惠", ""],
+    };
+    const [label, cls] = map[cat] || [cat || "情报", ""];
+    return '<span class="badge-cat ' + cls + '">' + label + "</span>";
+  }
+  function render(items) {
+    const box = $("intel-list");
+    box.innerHTML = "";
+    $("intel-count").textContent = items.length ? "（" + items.length + " 条）" : "";
+    $("intel-empty").hidden = items.length > 0;
+    items.forEach((it) => {
+      const el = document.createElement("article");
+      el.className = "intel-item";
+      const links = (it.source_urls && it.source_urls.length ? it.source_urls : [it.source_url])
+        .filter(Boolean)
+        .map((u) => '<a href="' + u + '" target="_blank" rel="noopener noreferrer">打开来源</a>')
+        .join("");
+      const route = (it.origin_airport || "全国/未知") + " → " + (it.destination_airport || "多目的地/未知");
+      const merged = it.is_merged ? " · 合并" + it.source_count + "来源" : "";
+      el.innerHTML =
+        "<h3>" + catBadge(it.category) + " " + (it.title || "") + "</h3>" +
+        '<div class="intel-meta">' +
+        "<span>" + route + "</span>" +
+        (it.airline ? "<span>航司:" + it.airline + "</span>" : "") +
+        (it.reported_total ? "<span>报道价 " + it.reported_total + (it.currency || "") + "</span>" : "") +
+        "<span>" + (it.published_at || it.found_at || "") + "</span>" +
+        "<span>" + (it.is_live_bookable_price === false ? "非实时可买" : "") + merged + "</span>" +
+        "</div>" +
+        '<p style="margin:6px 0;font-size:14px">' + (it.summary_zh || "") + "</p>" +
+        '<div class="intel-links">' + links + "</div>";
+      box.appendChild(el);
+    });
+  }
+  async function load(pref) {
+    $("origin-status").textContent = "加载中…";
+    try {
+      const qs = buildQuery(pref);
+      const r = await fetch("/api/v1/fare/intel?" + qs, { credentials: "same-origin" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      render((data.data && data.data.items) || []);
+      $("origin-status").textContent = "已更新 · 模式=" + ((data.data && data.data.mode) || "intel");
+    } catch (e) {
+      $("origin-status").textContent = "加载失败：" + e.message;
+    }
+  }
+  function saveAndLoad() {
+    const pref = readUI();
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pref)); } catch (e) {}
+    load(pref);
+  }
+  $("btn-apply").addEventListener("click", saveAndLoad);
+  $("btn-reset").addEventListener("click", () => { applyUI(DEFAULT); saveAndLoad(); });
+  $("btn-clear").addEventListener("click", () => {
+    applyUI({ codes: [], nationwide: false, hkg: false, mfm: false });
+    saveAndLoad();
+  });
+  // init from localStorage or default
+  let pref = DEFAULT;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) pref = Object.assign({}, DEFAULT, JSON.parse(raw));
+  } catch (e) {}
+  applyUI(pref);
+  load(pref);
+})();
+</script>
 {% endblock %}

@@ -326,18 +326,45 @@ def fare_intel(
     db: DbDep,
     limit: int = Query(30, le=100),
     origins: str | None = Query(None, description="comma IATA like CKG,TFU"),
+    mode: str = Query("specific", description="specific|china_all|all"),
+    include_hkg: bool = False,
+    include_mfm: bool = False,
     hide_expired: bool = True,
 ):
     """P1 international fare intel (no live quote provider required)."""
+    from app.services.airports.china import expand_origin_selection
     from app.services.fare.intel import IntelFilter, build_intel_view
 
-    prefs = [x.strip().upper() for x in (origins or "").split(",") if x.strip()]
-    if not prefs:
-        prefs = ["CKG", "TFU", "CTU"]
-    filt = IntelFilter(preferred_origins=prefs, hide_expired=hide_expired)
+    codes = [x.strip().upper() for x in (origins or "").split(",") if x.strip()]
+    if mode == "china_all":
+        prefs = expand_origin_selection(china_mainland_all=True)
+    elif mode == "all":
+        prefs = expand_origin_selection(
+            multi=codes, china_mainland_all=True, include_hkg=True, include_mfm=True
+        )
+    else:
+        prefs = expand_origin_selection(
+            multi=codes or ["CKG", "TFU", "CTU"],
+            include_hkg=include_hkg,
+            include_mfm=include_mfm,
+        )
+    filt = IntelFilter(
+        preferred_origins=prefs,
+        include_hkg=include_hkg,
+        include_mfm=include_mfm,
+        hide_expired=hide_expired,
+    )
     rows = build_intel_view(db, filt, limit=limit)
     return _ok(
-        {"origins": prefs, "count": len(rows), "items": rows, "mode": "intel_no_live_quote"}
+        {
+            "origins": prefs if mode != "china_all" else ["(china_mainland_all)", *codes],
+            "mode_flag": mode,
+            "include_hkg": include_hkg,
+            "include_mfm": include_mfm,
+            "count": len(rows),
+            "items": rows,
+            "mode": "intel_no_live_quote",
+        }
     )
 
 

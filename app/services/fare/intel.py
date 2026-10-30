@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -59,6 +60,157 @@ def _is_expired(signal: FareDealSignal, now: datetime) -> bool:
     return False
 
 
+def _norm_title_key(title: str) -> str:
+    """跨来源去重键：去标点/空白/常见噪声词，保留航线与航司线索。"""
+    t = (title or "").lower()
+    for ch in "，。！？、·|-—–|/\\()[]{}\"'“”‘’!?,.;:":
+        t = t.replace(ch, " ")
+    t = re.sub(r"\s+", " ", t).strip()
+    # 去掉常见前后缀噪声
+    for noise in (
+        "每日机票推荐",
+        "什么值得买",
+        "特价机票",
+        "促销",
+        "sale",
+        "deal",
+        "from ",
+        "的",
+    ):
+        t = t.replace(noise, " ")
+    t = re.sub(r"\s+", "", t).strip()
+    return t[:80]
+
+
+def merge_intel_signals(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """同一活动多来源合并；保留全部 source 链接；不误合并不同航线。"""
+    groups: dict[str, dict[str, Any]] = {}
+    for item in rows:
+        key_parts = [
+            item.get("origin_airport") or "",
+            item.get("destination_airport") or "",
+            _norm_title_key(item.get("title") or ""),
+        ]
+        key = "|".join(key_parts)
+        if key in groups:
+            g = groups[key]
+            g.setdefault("source_urls", [])
+            if item.get("source_url") and item["source_url"] not in g["source_urls"]:
+                g["source_urls"].append(item["source_url"])
+            g["sources"].append(
+                {
+                    "name": item.get("source_name"),
+                    "url": item.get("source_url"),
+                    "found_at": item.get("found_at"),
+                }
+            )
+            # 保留更高优先级分类
+            if item.get("priority", 0) < g.get("priority", 0):
+                g["priority"] = item["priority"]
+                g["category"] = item.get("category", g.get("category"))
+            if not g.get("source_url") and item.get("source_url"):
+                g["source_url"] = item["source_url"]
+        else:
+            item = dict(item)
+            item["source_urls"] = [item["source_url"]] if item.get("source_url") else []
+            item["sources"] = [
+                {
+                    "name": item.get("source_name"),
+                    "url": item.get("source_url"),
+                    "found_at": item.get("found_at"),
+                }
+            ]
+            item["is_merged"] = False
+            groups[key] = item
+    out = list(groups.values())
+    for g in out:
+        g["is_merged"] = len(g.get("sources") or []) > 1
+        g["source_count"] = len(g.get("sources") or [])
+    out.sort(key=lambda x: (x.get("priority", 0), x.get("found_at") or ""))
+    return out
+
+
+_CN_CITY_TO_IATA = {
+    "重庆": "CKG",
+    "成都": "TFU",
+    "北京": "PEK",
+    "上海": "PVG",
+    "广州": "CAN",
+    "深圳": "SZX",
+    "杭州": "HGH",
+    "武汉": "WUH",
+    "昆明": "KMG",
+    "西安": "XIY",
+    "长沙": "CSX",
+    "青岛": "TAO",
+    "南京": "NKG",
+    "厦门": "XMN",
+    "天津": "TSN",
+    "郑州": "CGO",
+    "三亚": "SYX",
+    "哈尔滨": "HRB",
+    "沈阳": "SHE",
+    "大连": "DLC",
+    "济南": "TNA",
+    "福州": "FOC",
+    "南宁": "NNG",
+    "贵阳": "KWE",
+    "温州": "WNZ",
+    "宁波": "NGB",
+    "无锡": "WUX",
+    "珠海": "ZUH",
+    "海口": "HAK",
+    "银川": "INC",  # 国内
+    "西宁": "XNN",
+    "兰州": "LHW",
+    "乌鲁木齐": "URC",
+    "拉萨": "LXA",
+    "桂林": "KWL",
+    "丽江": "LJG",
+    "西双版纳": "JHG",
+    "北海": "BHY",
+    "张家界": "DYG",
+    "敦煌": "DNH",
+    "井冈山": "JGS",
+    "喀什": "KHG",
+    "呼和浩特": "HET",
+    "太原": "TYN",
+    "石家庄": "SJW",
+    "合肥": "HFE",
+    "南昌": "KHN",
+    "长春": "CGQ",
+}
+
+
+def _maybe_fill_origin_from_title(signal: FareDealSignal) -> None:
+    """从标题提取中国出发城市 IATA；仅在无 origin 时填充。"""
+    if signal.origin_airport:
+        return
+    title = signal.title or ""
+    for city, iata in _CN_CITY_TO_IATA.items():
+        if city in title:
+            signal.origin_airport = iata
+            return
+
+
+_NOISE_INTEL = (
+    "credit card",
+    "points &",
+    "review:",
+    "review：",
+    "card review",
+    "membership",
+    "信用卡",
+    "里程卡",
+    "酒店测评",
+)
+
+
+def _looks_noise_intel(title: str) -> bool:
+    low = (title or "").lower()
+    return any(n in low for n in _NOISE_INTEL)
+
+
 def classify_signal(signal: FareDealSignal) -> str:
     types = set(_deal_types(signal))
     if "error_fare" in types:
@@ -93,6 +245,18 @@ def build_intel_view(
         expired = _is_expired(s, now_n)
         if filt.hide_expired and expired:
             continue
+        if _looks_noise_intel(s.title or ""):
+            continue
+        # 无价格/无机场/无目的地的“怎么买机票”类建议不进情报
+        title_l = (s.title or "")
+        if (
+            s.reported_total is None
+            and not s.origin_airport
+            and not s.destination_airport
+            and any(k in title_l for k in ("怎么买", "避坑", "有坑", "维权", "如何买", "哪里订"))
+        ):
+            continue
+        _maybe_fill_origin_from_title(s)
         intl = None
         if s.origin_airport and s.destination_airport:
             from app.services.airports.china import is_international_pair
@@ -159,7 +323,8 @@ def build_intel_view(
             }
         )
     out.sort(key=lambda x: (x["priority"], x["found_at"] or ""))
-    return out[:limit]
+    merged = merge_intel_signals(out)
+    return merged[:limit]
 
 
 def _zh_summary(s: FareDealSignal) -> str:
