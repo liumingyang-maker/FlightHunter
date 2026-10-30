@@ -383,10 +383,18 @@ def intel_quality_stats(
         lvl = v.get("city_match_level") or "origin_unknown"
         by_level[lvl] = by_level.get(lvl, 0) + 1
     merged = sum(1 for v in view if v.get("is_merged"))
+
+    def _naive(dt) -> datetime | None:
+        if not dt:
+            return None
+        if dt.tzinfo is not None:
+            return dt.astimezone(UTC).replace(tzinfo=None)
+        return dt
+
     new_24h = sum(
         1
         for s in all_rows
-        if s.created_at_utc and s.created_at_utc.replace(tzinfo=None) >= day_ago
+        if _naive(s.created_at_utc) and _naive(s.created_at_utc) >= day_ago
     )
     # 抽样检查链接（最多 8 条，避免打爆）
     link_checked = 0
