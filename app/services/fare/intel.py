@@ -55,7 +55,8 @@ def _is_expired(signal: FareDealSignal, now: datetime) -> bool:
         pub = signal.published_at_utc
         if pub.tzinfo is None:
             pub = pub.replace(tzinfo=UTC)
-        if now - pub > timedelta(days=60):
+        now_cmp = now if now.tzinfo else now.replace(tzinfo=UTC)
+        if now_cmp - pub > timedelta(days=60):
             return True
     return False
 
