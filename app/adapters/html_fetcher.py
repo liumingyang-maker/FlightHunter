@@ -197,6 +197,11 @@ class HttpxFetchAdapter(SourceAdapter):
     def parse(self, text: str, *, url: str) -> list[ParsedSignal]:
         soup = BeautifulSoup(text, "html.parser")
         signals: list[ParsedSignal] = []
+        # D-007：从整页提取发布日期候选（FlyNext 等）— 标签内优先
+        _ = re.findall(
+            r"(20\d{2}年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|20\d{2}[./-]\d{1,2}[./-]\d{1,2})",
+            text or "",
+        )
         for a in soup.find_all("a", href=True)[:400]:
             label = a.get_text(" ", strip=True)
             href_raw = a["href"] or ""
@@ -211,24 +216,31 @@ class HttpxFetchAdapter(SourceAdapter):
             if not sig and "/blog/" in href and any(
                 k in label for k in ("機票", "机票", "優惠", "优惠", "促銷", "促销", "Peach", "國泰", "HK Express")
             ):
-                # 香港优惠站列表：标签含关键词但价格/结构化不足时仍作线索
                 from app.adapters.base import ParsedSignal
 
                 price = None
+                currency = None
                 m_hkd = re.search(r"HK\$?\s*(\d[\d,]*)", label, re.I)
-                if m_hkd:
+                if m_hkd and not re.search(r"最高減|最多減|立減|up to", label, re.I):
                     try:
                         price = float(m_hkd.group(1).replace(",", ""))
+                        currency = "HKD"
                     except ValueError:
                         price = None
+                # 标签内发布日期
+                published = None
+                m_d = re.search(r"(20\d{2}年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|20\d{2}[./-]\d{1,2}[./-]\d{1,2})", label)
+                if m_d:
+                    published = _parse_any_date(m_d.group(1))
                 sig = ParsedSignal(
                     title=label[:200],
                     raw_claim_text=label,
                     url=href if href.startswith("http") else None,
                     reported_total=price,
-                    currency="HKD" if price else None,
+                    currency=currency,
                     deal_types=["flash_sale"],
                     confidence="low",
+                    published_at=published,
                 )
             if sig:
                 signals.append(sig)
@@ -333,6 +345,22 @@ _RISK_KW = {
 }
 
 
+def _parse_any_date(s: str) -> datetime | None:
+    if not s:
+        return None
+    s = s.strip()
+    m = re.match(r"(20\d{2})年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日", s)
+    if m:
+        return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    m = re.match(r"(20\d{2})[./-](\d{1,2})[./-](\d{1,2})", s)
+    if m:
+        return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    m = re.match(r"(\d{1,2})[./-](\d{1,2})[./-](20\d{2})", s)
+    if m:
+        return datetime(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+    return None
+
+
 def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
     """机票线索：需机票语义 +（金额|双 IATA|促销词），过滤纯攻略标题。"""
     if not label or len(label) < 6:
@@ -434,7 +462,11 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
             except ValueError:
                 price = None
     if price is None:
-        m_k = re.search(r"(\d+(?:\.\d+)?)\s*[Kk千](?!\s*g)", label)
+        # 只匹配价格语境的 K/千：往返含税2.7K / 2.7k+ / 3.1K+；排除 20KG 行李
+        m_k = re.search(
+            r"(?<!\d)(\d+(?:\.\d+)?)\s*([Kk千])(?!\s*g)(?![A-Za-z])",
+            label,
+        )
         if m_k and has_flight_kw:
             try:
                 price = float(m_k.group(1)) * 1000
@@ -446,6 +478,12 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
         return None
     if price is None and origin is None and not has_deal_kw:
         return None
+    # D-005：减免/优惠额 ≠ 票价
+    if re.search(r"(最高减|最高減|最多减|最多減|立减|立減|優惠額|优惠额|up to\s*HK\$|save\s*HK\$|减\s*HK\$|減\s*HK\$)", label, re.I):
+        if price is not None:
+            # 保留原文，但不把减免当 reported_total
+            price = None
+            currency = None
     types: list[str] = []
     for t, kws in _RISK_KW.items():
         if any(k.lower() in low or k in label for k in kws):

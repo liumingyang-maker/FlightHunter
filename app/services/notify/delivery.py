@@ -75,6 +75,11 @@ def send_notification(
     )
     if n is None or n.suppressed_reason:
         return n
+    # D-009：同 content_hash 已外送过则不再 console/toast
+    if "[delivery]" in (n.body or ""):
+        n.body = ((n.body or "") + "\n[delivery_skipped:already_sent]")[:4000]
+        session.flush()
+        return n
 
     deliveries = [deliver_console(title, body)]
     if try_toast:

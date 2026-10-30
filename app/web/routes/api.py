@@ -354,6 +354,7 @@ def fare_intel(
     codes = [x.strip().upper() for x in (origins or "").split(",") if x.strip()]
     # 频道视图：港澳/全球错价不强制绑定用户偏好机场过滤结果
     if channel == "global_error":
+        # D-004：除非用户显式传入 origins，否则全球错价不过滤出发地
         prefs = (
             expand_origin_selection(multi=codes, include_hkg=True, include_mfm=True)
             if codes

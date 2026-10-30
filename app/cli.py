@@ -180,7 +180,7 @@ def discover(
         key = idempotency_key(
             "discover_batch", module, "dry" if dry_run else "exec", utc_now().strftime("%Y%m%d%H%M")
         )
-        ok = sum(1 for r in results if r.get("status") == "ok")
+        ok = sum(1 for r in results if r.get("status") in {"ok", "ok_zero"})
         failed = sum(1 for r in results if r.get("status") in ("failed", "denied", "manual_only"))
         source_rows = [r for r in results if isinstance(r, dict) and r.get("source_id")]
         if dry_run:

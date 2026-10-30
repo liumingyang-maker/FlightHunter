@@ -132,6 +132,6 @@ async def test_fetch_source_with_none_text_does_not_crash(db, settings: Settings
     try:
         svc.adapter_for = lambda s, st: _EmptyAdapter()  # type: ignore[assignment]
         out = await fetch_source(db, settings, src, module="raffle", dry_run=False, persist_signals=True)
-        assert out["status"] in {"ok", "failed"}
+        assert out["status"] in {"ok", "failed", "ok_zero"}
     finally:
         svc.adapter_for = real  # type: ignore[assignment]

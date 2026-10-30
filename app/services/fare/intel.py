@@ -80,7 +80,9 @@ def _norm_title_key(title: str) -> str:
     ):
         t = t.replace(noise, " ")
     t = re.sub(r"\s+", "", t).strip()
-    return t[:80]
+    for extra in ("機票優惠", "机票优惠", "起"):
+        t = t.replace(extra, "")
+    return t[:90]
 
 
 def merge_intel_signals(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -263,41 +265,133 @@ _HK_MO_ORIGIN = {
 }
 
 
-def extract_origin_iatas_from_title(title: str) -> list[str]:
-    """提取标题中出现的全部出发城市 IATA（内地+港澳，去重保序）。"""
-    found: list[str] = []
+def _strip_airline_names(title: str) -> str:
     t = title or ""
-    if "北上广" in t:
-        for x in ("PEK", "PVG", "CAN"):
-            if x not in found:
-                found.append(x)
-    for city, iata in _CN_CITY_TO_IATA.items():
-        if city == "北上广":
-            continue
-        if city in t and iata not in found:
-            found.append(iata)
-    for city, iata in _HK_MO_ORIGIN.items():
-        if city in t and iata not in found:
-            # 避免「香港航空上海出发」把 HKG 当出发：仅在无更早内地城市+出发词冲突时
-            if iata == "HKG":
-                if re.search(r"(香港|HKG|Hong\s*Kong).{0,15}(來回|往返|出发|出发|from|→)", t, re.I) or re.search(
-                    r"(Peach|樂桃|乐桃|HK Express|快运|快運|國泰|国泰|Cathay|香港航空).{0,20}(香港|HKG)",
-                    t,
-                    re.I,
-                ):
-                    found.append(iata)
-                elif not any(x in t for x in ("上海", "北京", "成都", "重庆", "广州", "深圳", "PVG", "PEK", "CKG", "TFU")):
-                    # 标题仅香港语境且无内地出发城市
-                    if re.search(r"香港.{0,12}(優惠|优惠|促销|促銷|機票|机票)", t, re.I):
-                        found.append(iata)
-            else:
-                found.append(iata)
+    for name in _AIRLINE_HINTS:
+        t = t.replace(name, " ")
+    # 常见港澳航司英文/中文
+    for name in (
+        "HK Express",
+        "Hong Kong Express",
+        "香港航空",
+        "Hong Kong Airlines",
+        "Cathay Pacific",
+        "國泰",
+        "国泰",
+        "Air Hong Kong",
+        "澳门航空",
+        "Air Macau",
+        "Peach",
+        "樂桃",
+        "乐桃",
+    ):
+        t = t.replace(name, " ")
+    return t
+
+
+def extract_origin_iatas_from_title(title: str) -> list[str]:
+    """提取出发地；先剥航司名，再优先显式出发模式，避免目的/航司误判。"""
+    t = title or ""
+    body = _strip_airline_names(t)
+    found: list[str] = []
+
+    def add(code: str) -> None:
+        if code and code not in found:
+            found.append(code)
+
+    # 显式：X出发 / X→Y / X -> Y / from X
+    m = re.search(
+        r"(重庆|成都|北京|上海|广州|深圳|杭州|武汉|昆明|香港|澳門|澳门|Hong\s*Kong|Macau|Macao)[^\dA-Za-z]{0,4}(?:出发|起飞|→|->|至|飞|來回|往返|from)",
+        body,
+        re.I,
+    )
+    if m:
+        city = m.group(1)
+        mapping = {
+            "重庆": "CKG",
+            "成都": "TFU",
+            "北京": "PEK",
+            "上海": "PVG",
+            "广州": "CAN",
+            "深圳": "SZX",
+            "杭州": "HGH",
+            "武汉": "WUH",
+            "昆明": "KMG",
+            "香港": "HKG",
+            "澳門": "MFM",
+            "澳门": "MFM",
+        }
+        if city.lower().startswith("hong"):
+            add("HKG")
+        elif city.lower().startswith("mac"):
+            add("MFM")
+        else:
+            add(mapping.get(city, "HKG" if "港" in city else None))
+
+    # 显式 IATA 对：ABC-DEF 或 ABC→DEF（两端 3 字母）
+    m2 = re.findall(r"\b([A-Z]{3})\b\s*(?:→|->|-|–)\s*\b([A-Z]{3})\b", body)
+    if m2:
+        add(m2[0][0])
+
+    # 北上广
+    # 港澳航司品牌 → 出发地启发（无内地出发词时）
+    brand_hk = bool(re.search(r"HK Express|Hong Kong Airlines|國泰|国泰|Cathay|Peach|樂桃|乐桃", t, re.I))
+    if brand_hk and not re.search(
+        r"(上海|北京|成都|重庆|广州|深圳|杭州|武汉|昆明).{0,6}(出发|起飞|from)", body, re.I
+    ):
+        add("HKG")
+    if "北上广" in body:
+        add("PEK")
+        add("PVG")
+        add("CAN")
+        # 北上广/成都 等并列
+        for city, iata in _CN_CITY_TO_IATA.items():
+            if city == "北上广":
+                continue
+            if city in body:
+                add(iata)
+    if not found:
+        # 无显式出发/品牌出发时，才把正文内地城市当出发（全国多城促销）
+        for city, iata in _CN_CITY_TO_IATA.items():
+            if city == "北上广":
+                continue
+            if city in body:
+                add(iata)
+                break
+    if not re.search(r"(上海|北京|成都|重庆|广州|深圳|杭州|武汉|昆明).{0,6}(出发|起飞|from)", body, re.I):
+        if re.search(r"(香港|HKG|Hong\s*Kong)", body, re.I) and re.search(
+            r"(優惠|优惠|促銷|促销|機票|机票|來回|往返|周年|週年|sale|offer)", body, re.I
+        ):
+            add("HKG")
+        if re.search(r"(澳門|澳门|MFM|Macau)", body, re.I) and re.search(
+            r"(優惠|优惠|促銷|促销|機票|机票|來回|往返)", body, re.I
+        ):
+            add("MFM")
+    return found
+
+    if not found:
+        if re.search(r"(香港|HKG).{0,16}(優惠|优惠|促銷|促销|機票|机票|來回|往返|出发)", body, re.I):
+            add("HKG")
+        if re.search(r"(澳門|澳门|MFM).{0,16}(優惠|优惠|促銷|促销|機票|机票|來回|往返|出发)", body, re.I):
+            add("MFM")
     return found
 
 
 def extract_dest_iata(title: str) -> str | None:
+    t = title or ""
+    # 显式目的：→/至/飞/to 后的城市
+    m = re.search(
+        r"(?:→|->|至|飞|to)\s*(东京|大阪|名古屋|冲绳|首尔|釜山|曼谷|普吉|清迈|吉隆坡|新加坡|巴厘岛|河内|胡志明|台北|赫尔辛基|伦敦|巴黎|法兰克福|阿姆斯特丹|洛杉矶|旧金山|纽约|温哥华|悉尼|墨尔本|奥克兰|迪拜|伊斯坦布尔|贝尔格莱德|香港|澳门)",
+        t,
+        re.I,
+    )
+    if m:
+        return _DEST_CITY.get(m.group(1), _HK_MO_ORIGIN.get(m.group(1)))
     for city, iata in _DEST_CITY.items():
-        if city in (title or ""):
+        if city in t:
+            # 香港在出发语境时不作为目的
+            if city in ("香港",) and re.search(r"香港.{0,8}(出发|來回|往返|优惠|促銷|促销)", t, re.I):
+                continue
             return iata
     return None
 

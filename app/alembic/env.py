@@ -21,7 +21,7 @@ def _url() -> str:
         url = config.get_main_option("sqlalchemy.url")
         if url:
             return url
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     settings = load_settings()
     return f"sqlite+pysqlite:///{sqlite_path(settings).as_posix()}"

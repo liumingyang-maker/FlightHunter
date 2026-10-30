@@ -46,6 +46,14 @@ def claim_due_subscriptions(
         if trip.completed:
             sub.paused_reason = "trip_completed"
             continue
+        # D-001：调度器二次确认；demo/未确认不得进入正式执行
+        if trip.demo_only:
+            sub.paused_reason = "trip_demo"
+            continue
+        if not trip.confirmed:
+            sub.enabled = False
+            sub.paused_reason = "trip_not_confirmed"
+            continue
         ready.append(sub)
     # 稳定排序：先按 next_run_at 升序（None 最前）
     ready.sort(key=lambda s: ensure_aware_utc(s.next_run_at).timestamp() if s.next_run_at else 0.0)

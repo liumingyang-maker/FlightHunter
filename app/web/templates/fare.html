@@ -112,6 +112,18 @@
     state.hide_expired = $("hide_expired").checked;
   }
 
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function safeHttpUrl(u) {
+    try {
+      const x = new URL(String(u), location.origin);
+      if (x.protocol === "http:" || x.protocol === "https:") return x.href;
+    } catch (e) {}
+    return null;
+  }
   function catBadge(cat, isErr) {
     if (isErr) return '<span class="badge-cat bug">全球错价/异常</span>';
     const map = {
@@ -124,29 +136,37 @@
       other_intl_deal: ["其他国际优惠",""],
     };
     const [label, cls] = map[cat] || [cat || "情报",""];
-    return '<span class="badge-cat ' + cls + '">' + label + "</span>";
+    return '<span class="badge-cat ' + esc(cls) + '">' + esc(label) + "</span>";
   }
 
   function card(it) {
     const el = document.createElement("article");
     el.className = "intel-item";
-    const links = (it.source_urls && it.source_urls.length ? it.source_urls : [it.source_url])
-      .filter(Boolean)
-      .map((u) => '<a href="' + u + '" target="_blank" rel="noopener noreferrer">原文</a>').join(" ");
+    const urls = (it.source_urls && it.source_urls.length ? it.source_urls : [it.source_url])
+      .filter(Boolean);
+    const linkHtml = urls.map((u) => {
+      const safe = safeHttpUrl(u);
+      return safe
+        ? '<a href="' + esc(safe) + '" target="_blank" rel="noopener noreferrer">原文</a>'
+        : "";
+    }).filter(Boolean).join(" ");
     const route = (it.origin_airport || "多城/未知") + " → " + (it.destination_airport || "多目的地");
+    const timeLabel = it.published_at
+      ? ("发布 " + it.published_at)
+      : ("发现 " + (it.found_at || "时间未知") + (it.published_at ? "" : "（发布时间未知）"));
     el.innerHTML =
-      "<h3>" + catBadge(it.category, it.is_error_fare) + " " + (it.title || "") + "</h3>" +
+      "<h3>" + catBadge(it.category, it.is_error_fare) + " " + esc(it.title || "") + "</h3>" +
       '<div class="intel-meta">' +
-      "<span>" + route + "</span>" +
-      (it.city_match_level ? "<span>适用性:" + it.city_match_level + "</span>" : "") +
-      (it.airline ? "<span>" + it.airline + "</span>" : "") +
-      (it.reported_total ? "<span>报道价 " + it.reported_total + (it.currency || "") + "</span>" : "") +
-      "<span>" + (it.published_at || it.found_at || "") + "</span>" +
+      "<span>" + esc(route) + "</span>" +
+      (it.city_match_level ? "<span>适用性:" + esc(it.city_match_level) + "</span>" : "") +
+      (it.airline ? "<span>" + esc(it.airline) + "</span>" : "") +
+      (it.reported_total ? "<span>报道价 " + esc(it.reported_total) + esc(it.currency || "") + "</span>" : "") +
+      "<span>" + esc(timeLabel) + "</span>" +
       "<span>" + (it.is_error_fare ? "风险:自担" : "非实时可买") + "</span>" +
-      (it.signal_id ? ' <button type="button" class="btn fb" data-id="' + it.signal_id + '" data-fb="bookmarked">收藏</button>' : "") +
+      (it.signal_id ? ' <button type="button" class="btn fb" data-id="' + esc(it.signal_id) + '" data-fb="bookmarked">收藏</button>' : "") +
       "</div>" +
-      '<p style="margin:6px 0;font-size:13px">' + (it.summary_zh || "") + "</p>" +
-      '<div class="intel-links">' + links + "</div>";
+      '<p style="margin:6px 0;font-size:13px">' + esc(it.summary_zh || "") + "</p>" +
+      '<div class="intel-links">' + linkHtml + "</div>";
     return el;
   }
 
@@ -184,13 +204,12 @@
     const q = new URLSearchParams();
     q.set("channel", ch);
     q.set("limit", "40");
+    // D-004：全球错价默认不带用户偏好机场
     if (ch !== "global_error") {
       if (state.codes && state.codes.length) q.set("origins", state.codes.join(","));
       if (state.nationwide) q.set("mode", "china_all");
       if (state.hkg) q.set("include_hkg", "1");
       if (state.mfm) q.set("include_mfm", "1");
-    } else if (state.codes && state.codes.length) {
-      q.set("origins", state.codes.join(","));
     }
     q.set("hide_expired", state.hide_expired ? "1" : "0");
     $("origin-status").textContent = "加载中…";
