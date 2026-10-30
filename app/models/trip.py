@@ -34,6 +34,8 @@ class Trip(Base, UUIDPk, TimestampMixin):
     interests: Mapped[str] = mapped_column(Text, default="[]")
     created_from: Mapped[str] = mapped_column(String(40), default="user_action")
     demo_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 用户确认真实行程后才启动正式优惠扫描（P3）
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     notification_policy: Mapped[str] = mapped_column(String(40), default="digest_and_urgent")
     allow_unannounced_watch: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -30,6 +30,7 @@ dependencies = [
     "cryptography>=43.0.0",
     "pillow>=13.0.0",
     "pytesseract>=0.3.13",
+    "airportsdata>=20260905",
 ]
 
 [project.optional-dependencies]

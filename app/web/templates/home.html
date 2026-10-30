@@ -8,22 +8,31 @@
 </div>
 
 <div class="stats">
-  <a class="stat" href="/trips"><span class="n">{{ stats.trips }}</span><span>真实行程</span></a>
-  <a class="stat" href="/trips"><span class="n">{{ stats.demo_trips }}</span><span>演示行程</span></a>
-  <a class="stat" href="/fare"><span class="n">{{ stats.deals }}</span><span>机票线索</span></a>
-  <a class="stat" href="/fare"><span class="n">{{ stats.high_risk }}</span><span>高风险</span></a>
-  <a class="stat" href="/wallet"><span class="n">{{ stats.wallet }}</span><span>卡包</span></a>
+  <a class="stat" href="/fare"><span class="n">{{ stats.deals }}</span><span>国际机票情报</span></a>
+  <a class="stat" href="/fare"><span class="n">{{ stats.high_risk }}</span><span>高风险错价</span></a>
+  <a class="stat" href="/fare"><span class="n">{{ stats.watches }}</span><span>出发地偏好</span></a>
   <a class="stat" href="/campaigns"><span class="n">{{ stats.pending_entries }}</span><span>待处理报名</span></a>
+  <a class="stat" href="/trips"><span class="n">{{ stats.trips }}</span><span>已确认行程</span></a>
+  <a class="stat" href="/trips"><span class="n">{{ stats.demo_trips }}</span><span>演示行程</span></a>
   <a class="stat" href="/campaigns"><span class="n">{{ stats.offers }}</span><span>福利优惠</span></a>
-  <a class="stat" href="/fare"><span class="n">{{ stats.watches }}</span><span>航线愿望单</span></a>
+  <a class="stat" href="/wallet"><span class="n">{{ stats.wallet }}</span><span>卡包</span></a>
 </div>
 
 <section class="card">
-  <h2>系统状态</h2>
+  <h2>P1 国际机票情报雷达</h2>
   <ul class="list">
-    <li>行程后台扫描：创建行程后自动注册可恢复订阅；PC 离线时如实显示中断。</li>
-    <li>机票雷达：情报通道与报价通道分离；无授权报价源时价格标记未知。</li>
-    <li>报名默认「预填 + 人工确认」；提交结果未知禁止自动重试。</li>
+    <li>默认出发：重庆 CKG · 成都 TFU/CTU；全国=仅中国内地机场；HKG/MFM 可单独勾选。</li>
+    <li>仅收录国际/跨境情报；纯内地国内票不进入结果。</li>
+    <li>报道价 ≠ 实时可买价；请点击来源链接自行查询并购买。</li>
+    <li>API：<code>GET /api/v1/fare/intel?origins=CKG,TFU</code></li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>P3 行程福利</h2>
+  <ul class="list">
+    <li>仅对「已确认」的真实行程启动福利扫描；演示行程不触发正式监控。</li>
+    <li>确认命令：<code>python -m app.cli confirm-trip &lt;trip_id&gt;</code></li>
   </ul>
 </section>
 

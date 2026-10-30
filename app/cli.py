@@ -293,6 +293,27 @@ def migrate(
         engine.dispose()
 
 
+@app.command("confirm-trip")
+def confirm_trip_cmd(
+    trip_id: str = typer.Argument(...),
+    config: str | None = typer.Option(None, "--config"),
+) -> None:
+    """确认真实行程并启动正式福利/扫描（demo 不可）。"""
+    settings = load_settings(config, project_root=_project_root())
+    from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
+    from app.services.trips.service import confirm_trip
+
+    engine = create_db_engine(settings)
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        trip = confirm_trip(session, settings, trip_id)
+        session.commit()
+        console.print(f"[green]已确认行程 {trip.id} · {trip.label}[/green]")
+        console.print(f"scan_registered={trip.scan_registered} confirmed={trip.confirmed}")
+    engine.dispose()
+
+
 @app.command("list-trips")
 def list_trips(config: str | None = typer.Option(None, "--config")) -> None:
     """列出行程。"""

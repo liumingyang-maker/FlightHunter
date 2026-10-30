@@ -69,6 +69,7 @@ def create_trip(session: Session, settings: Settings, payload: TripCreate) -> Tr
         interests=json.dumps(payload.interests),
         created_from=payload.created_from,
         demo_only=payload.demo_only,
+        confirmed=bool(getattr(payload, "confirmed", False)) and not payload.demo_only,
         notification_policy=payload.notification_policy,
         allow_unannounced_watch=payload.allow_unannounced_watch,
         scan_registered=False,
@@ -78,16 +79,56 @@ def create_trip(session: Session, settings: Settings, payload: TripCreate) -> Tr
     for seg in payload.segments:
         session.add(_segment_to_model(trip.id, seg))
 
-    if settings.trip_monitoring.auto_register_on_trip_save and not payload.demo_only:
-        register_trip_scans(session, settings, trip)
-    elif payload.demo_only:
-        # demo 行程也登记订阅但不自动执行真实抓取
+    # P3：仅用户确认的真实行程启动正式扫描；demo 永不正式监控
+    if trip.demo_only:
         register_trip_scans(session, settings, trip, enabled=False)
+    elif trip.confirmed and settings.trip_monitoring.auto_register_on_trip_save:
+        register_trip_scans(session, settings, trip)
+        trip.scan_registered = True
+    # 未确认真实行程：不注册正式抓取（可后续 confirm_trip 再开）
 
     session.flush()
     rematch_trip_benefits(session, trip)
     session.flush()
     return trip
+
+
+def confirm_trip(session: Session, settings: Settings, trip_id: str) -> Trip:
+    """用户确认真实行程 → 启动正式扫描（demo 不可确认正式扫描）。"""
+    trip = session.get(Trip, trip_id)
+    if trip is None:
+        raise NotFoundError("行程不存在")
+    if trip.demo_only:
+        raise ValueError("演示行程不能确认为正式监控")
+    trip.confirmed = True
+    session.flush()
+    if not trip.scan_registered:
+        register_trip_scans(session, settings, trip)
+        trip.scan_registered = True
+    session.flush()
+    rematch_trip_benefits(session, trip)
+    session.flush()
+    return trip
+
+
+def cancel_trip_scans(session: Session, trip_id: str) -> int:
+    """取消行程：停用订阅并归档。"""
+    trip = session.get(Trip, trip_id)
+    if trip is None:
+        raise NotFoundError("行程不存在")
+    n = 0
+    for sub in session.scalars(
+        select(TripScanSubscription).where(TripScanSubscription.trip_id == trip_id)
+    ).all():
+        if sub.enabled:
+            sub.enabled = False
+            sub.paused_reason = "trip_cancelled"
+            n += 1
+    trip.archived = True
+    trip.completed = True
+    trip.scan_status = "cancelled"
+    session.flush()
+    return n
 
 
 def register_trip_scans(

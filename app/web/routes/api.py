@@ -56,6 +56,7 @@ def _trip_dict(t: Trip) -> dict:
         "local_end_date": t.local_end_date.isoformat(),
         "timezone": t.timezone,
         "demo_only": t.demo_only,
+        "confirmed": getattr(t, "confirmed", False),
         "archived": t.archived,
         "scan_registered": t.scan_registered,
         "scan_status": t.scan_status,
@@ -317,6 +318,26 @@ def scan_watch(watch_id: str, db: DbDep):
             }
             for m in matches
         ]
+    )
+
+
+@router.get("/fare/intel")
+def fare_intel(
+    db: DbDep,
+    limit: int = Query(30, le=100),
+    origins: str | None = Query(None, description="comma IATA like CKG,TFU"),
+    hide_expired: bool = True,
+):
+    """P1 international fare intel (no live quote provider required)."""
+    from app.services.fare.intel import IntelFilter, build_intel_view
+
+    prefs = [x.strip().upper() for x in (origins or "").split(",") if x.strip()]
+    if not prefs:
+        prefs = ["CKG", "TFU", "CTU"]
+    filt = IntelFilter(preferred_origins=prefs, hide_expired=hide_expired)
+    rows = build_intel_view(db, filt, limit=limit)
+    return _ok(
+        {"origins": prefs, "count": len(rows), "items": rows, "mode": "intel_no_live_quote"}
     )
 
 

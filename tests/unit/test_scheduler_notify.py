@@ -107,7 +107,7 @@ def test_scheduler_dry_run(db, settings: Settings):
             local_start_date=date(2027, 5, 10),
             local_end_date=date(2027, 5, 30),
             timezone="Asia/Tokyo",
-            demo_only=False,
+            demo_only=False, confirmed=True,
         ),
     )
     db.commit()
@@ -130,7 +130,7 @@ def test_offline_recovery_not_fake_scan(db, settings: Settings):
             local_start_date=date(2027, 5, 10),
             local_end_date=date(2027, 5, 30),
             timezone="Asia/Tokyo",
-            demo_only=False,
+            demo_only=False, confirmed=True,
         ),
     )
     trip.scan_status = "interrupted"
@@ -139,3 +139,4 @@ def test_offline_recovery_not_fake_scan(db, settings: Settings):
     db.commit()
     assert trip.scan_status == "recovery_pending"
     assert "中断" in (trip.scan_message or "")
+

@@ -55,7 +55,7 @@ def test_scheduler_uses_discovery_by_default(db, settings: Settings, monkeypatch
             local_start_date=date(2027, 5, 10),
             local_end_date=date(2027, 5, 30),
             timezone="Asia/Tokyo",
-            demo_only=False,
+            demo_only=False, confirmed=True,
         ),
     )
     db.commit()
@@ -123,3 +123,4 @@ def test_min_spend_structured(db):
     cond = json.loads(offer.conditions or "{}")
     assert cond.get("minimum_spend") == 100.0
     assert offer.face_value_min == 20.0
+

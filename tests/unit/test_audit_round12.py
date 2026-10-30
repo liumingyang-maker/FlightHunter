@@ -24,7 +24,7 @@ def test_dry_run_does_not_block_execute(db, settings: Settings):
             local_start_date=date(2027, 5, 10),
             local_end_date=date(2027, 5, 30),
             timezone="Asia/Tokyo",
-            demo_only=False,
+            demo_only=False, confirmed=True,
         ),
     )
     db.commit()
@@ -60,7 +60,7 @@ def test_due_filter_before_starving(db, settings: Settings):
             local_start_date=date(2027, 5, 10),
             local_end_date=date(2027, 5, 30),
             timezone="Asia/Tokyo",
-            demo_only=False,
+            demo_only=False, confirmed=True,
         ),
     )
     t2 = create_trip(
@@ -72,7 +72,7 @@ def test_due_filter_before_starving(db, settings: Settings):
             local_start_date=date(2027, 6, 1),
             local_end_date=date(2027, 6, 10),
             timezone="Europe/Paris",
-            demo_only=False,
+            demo_only=False, confirmed=True,
         ),
     )
     db.commit()
@@ -94,3 +94,4 @@ def test_thousand_separator_min_spend():
     assert sig is not None
     assert sig.reported_total == 100.0
     assert "min_spend=1000" in sig.raw_claim_text
+

@@ -225,7 +225,7 @@ def test_p003_sqlite_naive_datetime_compare(db, settings: Settings):
             local_start_date=date(2027, 5, 10),
             local_end_date=date(2027, 5, 30),
             timezone="Asia/Tokyo",
-            demo_only=False,
+            demo_only=False, confirmed=True,
         ),
     )
     db.commit()
@@ -260,7 +260,7 @@ def test_p004_no_adapter_is_blocked_not_completed(db, settings: Settings, monkey
             local_start_date=date(2027, 5, 10),
             local_end_date=date(2027, 5, 30),
             timezone="Asia/Tokyo",
-            demo_only=False,
+            demo_only=False, confirmed=True,
         ),
     )
     db.commit()
@@ -357,3 +357,4 @@ def test_p1_optional_cost_unknown_no_upper_bound():
     b = compute_cost_breakdown(base_ticket_total=2000, taxes=300, positioning=500, baggage=0)
     assert b.total_min == 2800
     assert b.total_max is None
+

@@ -446,6 +446,17 @@ def materialize_raffle_candidates(
         )
         if existing_round:
             continue
+        # P2：中国内地出境适用性（出发地不明=待核实）
+        china_outbound = None
+        title_l = (title or "").lower()
+        if category == "other_giveaway" and any(
+            k in title_l for k in ("cash", "car", "truck", "vehicle", "gift card")
+        ):
+            china_outbound = "not_travel_ticket"
+        elif category == "flight_giveaway":
+            china_outbound = "unknown_origin_pending"
+        elif category == "travel_package_unknown_air":
+            china_outbound = "package_unknown_air_pending"
         is_aggregator = source.kind in ("community", "search_api")
         official = None if is_aggregator else (s.url or candidate_url or source.base_url)
         # 官方旅游局站点同域活动链接：可写 official_url（仍保持 candidate，不自动 verified）
@@ -483,6 +494,10 @@ def materialize_raffle_candidates(
                 "aggregator": is_aggregator,
                 "source_list_url": s.url or candidate_url or source.base_url,
                 "prize_types": list(s.deal_types or []),
+                "china_outbound_relevance": china_outbound,
+                "core_recommend": bool(
+                    category in {"flight_giveaway", "travel_package_unknown_air"}
+                ),
             },
             ensure_ascii=False,
         )

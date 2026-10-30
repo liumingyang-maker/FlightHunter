@@ -134,6 +134,8 @@ class TripCreate(BaseModel):
     interests: list[str] = Field(default_factory=list)
     created_from: str = "user_action"
     demo_only: bool = False
+    # 用户确认真实行程后才启动正式福利/扫描
+    confirmed: bool = False
     notification_policy: str = "digest_and_urgent"
     allow_unannounced_watch: bool = True
 
@@ -148,6 +150,7 @@ class TripCreate(BaseModel):
 
 class TripOut(TripCreate):
     id: str
+    scan_registered: bool = False
     created_at_utc: datetime
     updated_at_utc: datetime
     scan_registered: bool = False

@@ -40,7 +40,7 @@ def test_create_trip_registers_scans(db, settings: Settings):
             local_start_date=date(2027, 5, 10),
             local_end_date=date(2027, 5, 30),
             timezone="Asia/Tokyo",
-            demo_only=False,
+            demo_only=False, confirmed=True,
             segments=[
                 TripSegmentIn(
                     country_code="JP",
@@ -163,3 +163,4 @@ def test_update_trip_rematches(db, settings: Settings):
     )
     assert m is not None
     assert m.state in ("usable", "maybe_usable", "not_usable")
+

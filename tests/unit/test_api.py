@@ -25,6 +25,7 @@ def test_create_trip_and_list(app_client):
         "local_end_date": "2027-05-30",
         "timezone": "Asia/Tokyo",
         "demo_only": False,
+        "confirmed": True,
         "segments": [],
     }
     r = app_client.post("/api/v1/trips", json=payload)

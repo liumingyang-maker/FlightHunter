@@ -26,7 +26,7 @@ def test_200_plus_due_not_starved(db, settings: Settings):
             local_start_date=date(2027, 5, 10),
             local_end_date=date(2027, 5, 30),
             timezone="Asia/Tokyo",
-            demo_only=False,
+            demo_only=False, confirmed=True,
         ),
     )
     db.commit()
@@ -100,3 +100,4 @@ def test_source_cooldown_skips_recent(db, settings: Settings, monkeypatch):
         )
     )
     assert src.id not in fetched
+
