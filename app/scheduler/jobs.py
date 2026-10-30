@@ -266,14 +266,18 @@ def run_raffle_pipeline(
                 {
                     "source_id": None,
                     "status": "post_raffle_auto_verify_extra",
-                    "verified": sum(1 for r in extra if r.get("ok")),
+                    "auto_extracted_count": sum(1 for r in extra if r.get("ok")),
                     "failed": sum(1 for r in extra if not r.get("ok")),
                     "steps": extra,
                 },
             ]
         ok = sum(1 for r in results if r.get("status") in {"ok", "post_raffle_auto_verify", "post_raffle_auto_verify_extra"})
         failed = sum(1 for r in results if r.get("status") in {"failed", "denied", "manual_only"})
-        verified = sum(int(r.get("verified") or 0) for r in results if isinstance(r, dict))
+        verified = sum(
+            int(r.get("auto_extracted_count") or r.get("verified") or 0)
+            for r in results
+            if isinstance(r, dict)
+        )
         run.status = "completed" if (ok and not failed) else ("partial" if ok else "failed")
         run.message = json.dumps(
             {
@@ -281,7 +285,16 @@ def run_raffle_pipeline(
                 "failed": failed,
                 "auto_extracted_count": verified,
                 "steps": [
-                    {k: r.get(k) for k in ("status", "source_id", "verified", "failed", "open_status")}
+                    {
+                        k: r.get(k)
+                        for k in (
+                            "status",
+                            "source_id",
+                            "auto_extracted_count",
+                            "failed",
+                            "open_status",
+                        )
+                    }
                     for r in results
                 ],
             },
