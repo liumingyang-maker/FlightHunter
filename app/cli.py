@@ -571,6 +571,68 @@ def raffle_rules_check(
     console.print_json(_json.dumps(payload, ensure_ascii=False, default=str))
 
 
+@app.command("raffle-multi-round-check")
+def raffle_multi_round_check(
+    url: str = typer.Argument(...),
+    config: str | None = typer.Option(None, "--config"),
+    nationality: str | None = typer.Option(None, help="合成测试国籍，如 CN"),
+    residence: str | None = typer.Option(None, help="合成测试居住国，如 CN"),
+    age: int | None = typer.Option(None),
+) -> None:
+    """同页多活动/多期拆分核验；禁止跨期拼接机票奖品与截止日期。"""
+    import asyncio
+    import json as _json
+    from datetime import UTC, datetime
+
+    settings = load_settings(config, project_root=_project_root())
+    from app.adapters.html_fetcher import HttpxFetchAdapter
+    from app.core.url_safety import assert_public_http_url
+    from app.services.raffle.multi_round import (
+        eligibility_with_synthetic_profile,
+        parse_multi_round_event_html,
+    )
+
+    assert_public_http_url(url)
+    adapter = HttpxFetchAdapter(settings)
+
+    async def _run():
+        return await adapter.fetch(url)
+
+    result = asyncio.run(_run())
+    if not result.ok:
+        console.print(f"[red]读取失败 {result.error_code}: {result.message}[/red]")
+        raise typer.Exit(1)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    parsed = parse_multi_round_event_html(
+        result.text or "", page_url=result.final_url or url, now=now
+    )
+    rounds_out = []
+    for r in parsed.rounds:
+        el = eligibility_with_synthetic_profile(
+            r, nationality=nationality, residence=residence, age=age
+        )
+        rounds_out.append({**r.to_dict(), "eligibility": el})
+    payload = {
+        "page_fetched": True,
+        "now": now.isoformat(),
+        **parsed.to_dict(),
+        "rounds": rounds_out,
+        "note": "有效≠eligible；eligible≠已报名；不自动提交",
+    }
+    # open_flight_rounds 依赖 rounds 字段在 to_dict 后仍可用
+    payload["open_flight_rounds"] = [
+        r["round_label"]
+        for r in rounds_out
+        if r.get("prize_is_flight") and r.get("active_now") is True
+    ]
+    payload["ended_flight_rounds"] = [
+        r["round_label"]
+        for r in rounds_out
+        if r.get("prize_is_flight") and r.get("active_now") is not True
+    ]
+    console.print_json(_json.dumps(payload, ensure_ascii=False, default=str))
+
+
 @app.command("jp-benefits-scan")
 def jp_benefits_scan(
     config: str | None = typer.Option(None, "--config"),

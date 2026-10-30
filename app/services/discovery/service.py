@@ -450,6 +450,110 @@ def materialize_raffle_candidates(
     return created
 
 
+def materialize_multi_round_rules(
+    session: Session,
+    source: Source,
+    html: str,
+    *,
+    page_url: str,
+) -> int:
+    """官方详情页多轮次 → 独立 CampaignRound；日期与奖品严格绑定本轮。"""
+    from app.models import Campaign, CampaignRound, Organizer
+    from app.services.raffle.multi_round import parse_multi_round_event_html
+
+    parsed = parse_multi_round_event_html(html, page_url=page_url)
+    created = 0
+    org_name = "官方旅游局 · 多轮活动"
+    org = session.scalar(select(Organizer).where(Organizer.name == org_name))
+    if org is None:
+        org = Organizer(
+            id=new_id(),
+            name=org_name,
+            website_url=page_url,
+            official_domain=None,
+            trust_notes="官方详情页多轮次占位；逐轮核实",
+        )
+        session.add(org)
+        session.flush()
+    for r in parsed.rounds:
+        title = f"[{r.round_label}] {r.title}"[:400]
+        edition = r.edition_key
+        key = sha256_text(f"{page_url}:{edition}:{title}")[:32]
+        camp = session.scalar(select(Campaign).where(Campaign.program_key == key))
+        if camp is None:
+            category = (
+                "flight_giveaway"
+                if r.prize_is_flight
+                else "other_giveaway"
+            )
+            camp = Campaign(
+                id=new_id(),
+                organizer_id=org.id,
+                program_key=key,
+                name=title[:200],
+                category=category,
+                legacy_seed=False,
+            )
+            session.add(camp)
+            session.flush()
+        existing = session.scalar(
+            select(CampaignRound).where(
+                CampaignRound.campaign_id == camp.id,
+                CampaignRound.edition_key == edition,
+            )
+        )
+        if existing:
+            continue
+        rnd = CampaignRound(
+            id=new_id(),
+            campaign_id=camp.id,
+            edition_key=edition,
+            title=title,
+            organizer_name=org.name,
+            official_url=page_url,
+            prize_summary=r.prize_summary,
+            verify_status="candidate",
+            automation_policy="unknown",
+            frequency="unknown",
+            limit_scope="unknown",
+            purchase_required=r.purchase_required,
+            demo_only=False,
+        )
+        if r.closes_iso:
+            try:
+                from datetime import datetime as _dt
+
+                rnd.entry_closes_at_utc = _dt.fromisoformat(r.closes_iso)
+            except Exception:
+                pass
+        if r.opens_iso:
+            try:
+                from datetime import datetime as _dt
+
+                rnd.entry_opens_at_utc = _dt.fromisoformat(r.opens_iso)
+            except Exception:
+                pass
+        rnd.tags = json.dumps(
+            {
+                "official": True,
+                "multi_round": True,
+                "round_label": r.round_label,
+                "active_now": r.active_now,
+                "prize_is_flight": r.prize_is_flight,
+                "prize_is_gift_or_other": r.prize_is_gift_or_other,
+                "residency_restriction": r.residency_restriction,
+                "opens_raw": r.opens_raw,
+                "closes_raw": r.closes_raw,
+                "source_list_url": page_url,
+            },
+            ensure_ascii=False,
+        )
+        session.add(rnd)
+        created += 1
+    session.flush()
+    return created
+
+
 def match_and_alert_fare(session: Session, *, limit_watches: int = 20) -> dict[str, int]:
     """对启用中的 FareWatch 做匹配并生成提醒；站内+尝试本机外送。"""
     from app.services.fare.service import evaluate_alerts_for_match, match_watch_to_deals
@@ -538,9 +642,9 @@ async def fetch_source(
     if result.ok and result.text:
         effective_module = module if module != "all" else (source.module or "fare")
         if effective_module == "trip" and hasattr(adapter, "parse_trip"):
-            parsed = adapter.parse_trip(result.text, url=parse_base)[:20]  # type: ignore[attr-defined]
+            parsed = adapter.parse_trip(result.text or "", url=parse_base)[:20]  # type: ignore[attr-defined]
         elif effective_module == "raffle" and hasattr(adapter, "parse_raffle"):
-            parsed = adapter.parse_raffle(result.text, url=parse_base)[:20]  # type: ignore[attr-defined]
+            parsed = adapter.parse_raffle(result.text or "", url=parse_base)[:20]  # type: ignore[attr-defined]
             if source.kind == "official_tourism_board":
                 extra = discover_official_tourism_events(
                     session, source, result.text or "", page_url=parse_base
@@ -552,7 +656,7 @@ async def fetch_source(
                         seen.add(e.title)
                 parsed = parsed[:20]
         else:
-            parsed = adapter.parse(result.text, url=parse_base)[:20]
+            parsed = adapter.parse(result.text or "", url=parse_base)[:20]
 
     effective_module = module if module != "all" else (source.module or "fare")
     if cand is not None:

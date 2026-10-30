@@ -416,22 +416,63 @@ def mark_booked(deal_id: str, db: DbDep, method: str = Query("user_reported")):
 
 # ---- Campaign rounds ----
 @router.get("/campaign-rounds")
-def list_rounds(db: DbDep, status: str | None = None, limit: int = Query(50, le=200)):
-    stmt = select(CampaignRound).order_by(CampaignRound.updated_at_utc.desc()).limit(limit)
+def list_rounds(
+    db: DbDep,
+    status: str | None = None,
+    limit: int = Query(50, le=200),
+    open_only: bool = False,
+    flight_only: bool = False,
+):
+    stmt = select(CampaignRound).order_by(CampaignRound.updated_at_utc.desc()).limit(limit * 3)
     if status:
         stmt = stmt.where(CampaignRound.verify_status == status)
     rows = db.scalars(stmt).all()
     import json as _json
+    from datetime import UTC, datetime
 
-    def _source_list(r: CampaignRound) -> str | None:
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    def _tags(r: CampaignRound) -> dict:
         if not r.tags:
-            return None
+            return {}
         try:
             data = _json.loads(r.tags)
-            return data.get("source_list_url") if isinstance(data, dict) else None
+            return data if isinstance(data, dict) else {}
         except Exception:
-            return None
+            return {}
 
+    def _source_list(r: CampaignRound) -> str | None:
+        return _tags(r).get("source_list_url")
+
+    def _is_open(r: CampaignRound) -> bool:
+        t = _tags(r)
+        if "active_now" in t:
+            return t.get("active_now") is True
+        closes = r.entry_closes_at_utc
+        if closes is not None:
+            c = closes.replace(tzinfo=None) if closes.tzinfo else closes
+            return c >= now
+        return True
+
+    def _is_flight(r: CampaignRound) -> bool:
+        t = _tags(r)
+        if "prize_is_flight" in t:
+            return t.get("prize_is_flight") is True
+        try:
+            cat = r.campaign.category if r.campaign else ""
+        except Exception:
+            cat = ""
+        return cat == "flight_giveaway"
+
+    filtered = []
+    for r in rows:
+        if open_only and not _is_open(r):
+            continue
+        if flight_only and not _is_flight(r):
+            continue
+        filtered.append(r)
+        if len(filtered) >= limit:
+            break
     return _ok(
         [
             {
@@ -442,12 +483,14 @@ def list_rounds(db: DbDep, status: str | None = None, limit: int = Query(50, le=
                 "source_list_url": _source_list(r),
                 "verify_status": r.verify_status,
                 "demo_only": r.demo_only,
+                "open_now": _is_open(r),
+                "prize_is_flight": _is_flight(r),
                 "entry_timezone": r.entry_timezone,
                 "entry_closes_at_utc": r.entry_closes_at_utc.isoformat()
                 if r.entry_closes_at_utc
                 else None,
             }
-            for r in rows
+            for r in filtered
         ]
     )
 

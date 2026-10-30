@@ -119,6 +119,19 @@ async def attempt_official_evidence(
             _save_tags(round_, tags)
             out["discovered_official_candidate"] = discovered
             out["note"] = "已保存聚合快照并记录官方候选链接；仍需人工/后续官方快照核实，不自动 verified"
+    if not is_agg and result.ok and "contentsView.do" in (result.final_url or target):
+        from app.models import Source
+        from app.services.discovery.service import materialize_multi_round_rules
+
+        src = session.scalar(select(Source).where(Source.module == "raffle").limit(1))
+        if src is not None:
+            n = materialize_multi_round_rules(
+                session,
+                src,
+                result.text or "",
+                page_url=result.final_url or target,
+            )
+            out["multi_round_created"] = n
     return out
 
 

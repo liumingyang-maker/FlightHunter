@@ -54,6 +54,18 @@ def counts(db: Path) -> dict:
                 "task_failures": q("SELECT count(*) FROM task_runs WHERE status IN ('failed','partial') AND dry_run=0", "task_runs"),
                 "task_skipped_cooldown": q("SELECT count(*) FROM task_runs WHERE status='skipped' AND dry_run=0", "task_runs"),
                 "task_blocked": q("SELECT count(*) FROM task_runs WHERE status='blocked' AND dry_run=0", "task_runs"),
+                "raffle_official_url": q(
+                    "SELECT count(*) FROM campaign_rounds WHERE demo_only=0 AND official_url IS NOT NULL",
+                    "campaign_rounds",
+                ),
+                "raffle_multi_round": q(
+                    "SELECT count(*) FROM campaign_rounds WHERE demo_only=0 AND tags LIKE '%multi_round%'",
+                    "campaign_rounds",
+                ),
+                "raffle_open_flight": q(
+                    "SELECT count(*) FROM campaign_rounds WHERE demo_only=0 AND tags LIKE '%\"active_now\": true%' AND (tags LIKE '%\"prize_is_flight\": true%' OR official_url LIKE '%visitkorea%')",
+                    "campaign_rounds",
+                ),
             }
             issues = {}
             if "campaign_rounds" in tables:
