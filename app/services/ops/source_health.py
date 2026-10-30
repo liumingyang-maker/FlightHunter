@@ -77,6 +77,9 @@ def source_health_report(
             elif last_result == "ok_zero":
                 counters["round_zero_parse"] += 1
                 counters["round_success"] += 1
+            elif last_result == "ok_existing":
+                # R-015：已解析但无新增 ≠ 零解析
+                counters["round_success"] += 1
             elif last_result == "ok_valuable":
                 counters["round_valuable"] += 1
                 counters["round_success"] += 1

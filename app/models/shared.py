@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPk
@@ -129,3 +129,17 @@ class Notification(Base, UUIDPk, TimestampMixin):
     read: Mapped[bool] = mapped_column(Boolean, default=False)
     content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     suppressed_reason: Mapped[str | None] = mapped_column(String(200))
+
+
+class NotificationDelivery(Base, UUIDPk, TimestampMixin):
+    """R-012/R-013：事件+渠道持久送达状态（跨进程可查）。"""
+
+    __tablename__ = "notification_deliveries"
+    __table_args__ = (UniqueConstraint("event_key", "channel", name="uq_notification_delivery_event_channel"),)
+
+    event_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending")  # pending|toast_delivered|recorded|failed|exhausted
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    notification_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("notifications.id", ondelete="SET NULL"))

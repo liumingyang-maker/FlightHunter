@@ -219,34 +219,30 @@ class HttpxFetchAdapter(SourceAdapter):
             ):
                 from app.adapters.base import ParsedSignal
 
-                # N-004：多目的地分别绑定；绑定不完整则金额 unknown
+                # N-004/R-004：多目的地金额互不相同 → 不写单一 reported_total
                 routes = extract_route_price_candidates(label)
                 price = None
                 currency = None
-                dest = None
-                if len(routes) == 1:
+                multi_diff = len({r.get("amount") for r in routes}) > 1
+                if not multi_diff and len(routes) == 1:
                     price = routes[0]["amount"]
                     currency = routes[0]["currency"]
-                    dest = routes[0].get("dest_city")
-                elif len(routes) > 1:
-                    # 多线路：取第一条并保留全部原文；不把 A 价绑到 B
-                    price = routes[0]["amount"]
-                    currency = routes[0]["currency"]
-                    dest = routes[0].get("dest_city")
-                else:
-                    m_hkd = re.search(r"HK\$?\s*(\d[\d,]*)", label, re.I)
-                    dests_found = re.findall(
-                        r"(台湾|大阪|东京|首尔|曼谷|新加坡|台北|香港|上海|北京|成都)", label
+                elif not multi_diff and len(routes) == 0:
+                    m_hkd = re.search(r"(MOP\$?\s*|HK\$?\s*)(\d[\d,]*)", label, re.I)
+                    dests_found = set(
+                        re.findall(
+                            r"(台湾|大阪|东京|首尔|曼谷|新加坡|台北|香港|上海|北京|成都)", label
+                        )
                     )
-                    if m_hkd and len(set(dests_found)) <= 1 and not re.search(
+                    if m_hkd and len(dests_found) <= 1 and not re.search(
                         r"最高減|最多減|立減|立省|up to|save ", label, re.I
                     ):
                         try:
-                            price = float(m_hkd.group(1).replace(",", ""))
-                            currency = "HKD"
+                            price = float(m_hkd.group(2).replace(",", ""))
+                            currency = _currency_from_token(m_hkd.group(1))
                         except ValueError:
                             price = None
-                # 标签内发布日期：仅明确发布标签，不写旅行日期（N-006）
+                # 标签内发布日期：仅明确发布标签（R-006）
                 published = _extract_published_only(label)
                 sig = ParsedSignal(
                     title=label[:200],
@@ -378,53 +374,51 @@ def _parse_any_date(s: str) -> datetime | None:
     return None
 
 
-# N-006：仅明确发布/更新标签；旅行/出发/销售日期不得写入 published_at
+# N-006/R-006：仅明确发布标签；更新/旅行/活动日期不得写入 published_at
 _PUBLISH_LABEL = re.compile(
-    r"(?:發佈|发布|公佈|公布|更新|posted|published|published\s+at|date\s+posted|post\s*date)"
-    r"\s*[:：]?\s*"
+    r"(?:發佈日期|发布日期|發布日期|公佈日期|公布日期|發佈|发布|發布|公佈|公布|posted\s+at|published(?:\s+at)?|"
+    r"date\s+posted|post\s*date|publication\s+date)"
+    r"\s*[:：·.]?\s*"
     r"(20\d{2}年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|20\d{2}[./-]\d{1,2}[./-]\d{1,2})",
     re.I,
 )
 _TRAVEL_DATE_CONTEXT = re.compile(
-    r"(旅行|出行|出發|出发|起飞|乘坐|有效期|适用|适用期|销售|促銷|促销|活动期|報名|报名|travel|valid\s+(?:from|for)|book|depart|departure|journey)",
+    r"(旅行|出行|出發|出发|起飞|乘坐|有效期|适用|适用期|销售|促銷|促销|活动|活動|报名|報名|"
+    r"travel|valid\s+(?:from|for)|book|depart|departure|journey|更新|updated)",
     re.I,
 )
 
 
 def _extract_published_only(text: str) -> datetime | None:
-    """只解析有发布标签的日期；旅行日期上下文一律不写 published_at。"""
+    """R-006：仅解析明确发布标签日期；无标签裸日期一律不写 published_at。"""
     if not text:
         return None
     for m in _PUBLISH_LABEL.finditer(text):
         dt = _parse_any_date(m.group(1))
         if dt:
             return dt
-    # 无标签时：若全文含旅行语境且日期紧邻旅行词，跳过
-    bare = re.findall(
-        r"(20\d{2}年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|20\d{2}[./-]\d{1,2}[./-]\d{1,2})", text
-    )
-    if not bare:
-        return None
-    # 若裸日期出现在旅行词后 20 字符内 → 不是发布日
-    for m in re.finditer(
-        r"(20\d{2}年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|20\d{2}[./-]\d{1,2}[./-]\d{1,2})", text
-    ):
-        start = max(0, m.start() - 24)
-        window = text[start : m.start()]
-        if _TRAVEL_DATE_CONTEXT.search(window):
-            continue
-        # 同句旅行词在日期后 16 字符
-        end = min(len(text), m.end() + 16)
-        if _TRAVEL_DATE_CONTEXT.search(text[m.end() : end]):
-            continue
-        return _parse_any_date(m.group(1))
     return None
 
 
-def extract_route_price_candidates(label: str) -> list[dict[str, Any]]:
-    """N-004：多目的地分别绑定价格；无法绑定则返回空（不把 A 目的地价绑到 B）。
+def _currency_from_token(token: str) -> str:
+    """R-005：HK$→HKD，MOP$→MOP，¥→CNY，其它未知。"""
+    t = (token or "").upper()
+    if "MOP" in t:
+        return "MOP"
+    if "HK$" in t or t.startswith("HK"):
+        return "HKD"
+    if "¥" in token or "CNY" in t or "RMB" in t:
+        return "CNY"
+    if "US$" in t or "USD" in t:
+        return "USD"
+    return "HKD"
 
-    识别形如「大阪 HK$1500」「台湾 800」「HK$800 台湾」等就近绑定。
+
+def extract_route_price_candidates(label: str) -> list[dict[str, Any]]:
+    """多目的地分别绑定价格；无法完整绑定则返回空。
+
+    R-004：台湾 HK$800 · 大阪 HK$1500 必须各自绑定，不得只绑一条却标另一目的地。
+    R-005：MOP 不得标成 HKD。
     """
     if not label:
         return []
@@ -433,35 +427,41 @@ def extract_route_price_candidates(label: str) -> list[dict[str, Any]]:
         r"(大阪|东京|名古屋|冲绳|首尔|釜山|曼谷|普吉|清迈|吉隆坡|新加坡|巴厘岛|河内|胡志明|"
         r"台北|台湾|台中|高雄|香港|澳门|上海|北京|成都|重庆|广州|深圳|杭州|武汉|昆明)"
     )
-    price_pat = r"(?:HK\$?\s*|¥\s*|MOP\$?\s*)(\d[\d,]{2,})"
+    price_pat = r"(MOP\$?\s*|HK\$?\s*|¥\s*|RMB\s*|US\$?\s*)(\d[\d,]{2,})"
     # dest 后价格
-    for m in re.finditer(dest_pat + r"[^\dA-Za-z]{0,20}?" + price_pat, label, re.I):
+    for m in re.finditer(dest_pat + r"[^\dA-Za-z]{0,24}?" + price_pat, label, re.I):
         try:
-            amt = float(m.group(2).replace(",", ""))
+            amt = float(m.group(3).replace(",", ""))
         except ValueError:
             continue
-        cur = "HKD" if re.search(r"HK\$|MOP\$", m.group(1), re.I) else ("CNY" if "¥" in m.group(1) else "HKD")
-        if re.search(r"最高減|最多減|立省|立減|up to|save ", label[max(0, m.start() - 8) : m.end()], re.I):
+        cur = _currency_from_token(m.group(2))
+        window = label[max(0, m.start() - 8) : m.end()]
+        if re.search(r"最高減|最多減|立省|立減|up to|save ", window, re.I):
             continue
         out.append({"dest_city": m.group(1), "amount": amt, "currency": cur})
     # 价格后 dest
     for m in re.finditer(price_pat + r"[^\dA-Za-z]{0,16}?" + dest_pat, label, re.I):
         try:
-            amt = float(m.group(1).replace(",", ""))
+            amt = float(m.group(2).replace(",", ""))
         except ValueError:
             continue
-        cur = "HKD" if re.search(r"HK\$|MOP\$", m.group(0), re.I) else "HKD"
-        city = m.group(2)
+        cur = _currency_from_token(m.group(1))
+        city = m.group(3)
         if any(c.get("dest_city") == city and c.get("amount") == amt for c in out):
             continue
-        if re.search(r"最高減|最多減|立省|立減|up to|save ", label[max(0, m.start() - 8) : m.end()], re.I):
+        window = label[max(0, m.start() - 8) : m.end()]
+        if re.search(r"最高減|最多減|立省|立減|up to|save ", window, re.I):
             continue
         out.append({"dest_city": city, "amount": amt, "currency": cur})
-    # 多目的地时仅有一个裸价 → 不绑定（返回空由调用方处理 unknown）
     dests = set(re.findall(dest_pat, label, re.I))
-    if len(dests) >= 2 and len(out) < len(dests):
-        # 绑定不完整：丢弃所有，避免错绑
-        return []
+    # 多目的地：每条路线必须有自己的价；不完整则全部丢弃
+    if len(dests) >= 2:
+        bound = {c["dest_city"] for c in out}
+        if not dests.issubset(bound) or len(out) < len(dests):
+            return []
+        # 金额互不相同的多路线：调用方不得写单一 reported_total
+        if len({c["amount"] for c in out}) > 1:
+            return out  # 保留结构化；调用方 multi_route=True
     return out
 
 
@@ -558,23 +558,17 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
             except ValueError:
                 price = None
     if price is None:
-        # N-004：多目的地就近绑定；不完整则不写 reported_total
+        # N-004/R-004：多目的地就近绑定；金额互不相同 → 不写单一 reported_total
         routes = extract_route_price_candidates(label)
-        if len(routes) == 1:
+        multi = len({r.get("amount") for r in routes}) > 1
+        if multi:
+            price = None
+            currency = None
+        elif len(routes) == 1:
             price = routes[0]["amount"]
             currency = routes[0]["currency"]
-        elif len(routes) > 1:
-            # 多线路各有价：取与 dest 更近的一条，无 dest 则第一条
-            pick = routes[0]
-            if dest:
-                for r in routes:
-                    if r.get("dest_city") and r["dest_city"] in (label or ""):
-                        pick = r
-                        break
-            price = pick["amount"]
-            currency = pick["currency"]
         else:
-            m_hkd = re.search(r"HK\$?\s*(\d[\d,]*)", label, re.I)
+            m_hkd = re.search(r"(MOP\$?\s*|HK\$?\s*)(\d[\d,]*)", label, re.I)
             dests_found = set(
                 re.findall(
                     r"(台湾|大阪|东京|首尔|曼谷|新加坡|台北|香港|上海|北京|成都|重庆|广州|深圳)",
@@ -583,12 +577,11 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
             )
             if m_hkd and len(dests_found) <= 1:
                 try:
-                    price = float(m_hkd.group(1).replace(",", ""))
-                    currency = "HKD"
+                    price = float(m_hkd.group(2).replace(",", ""))
+                    currency = _currency_from_token(m_hkd.group(1))
                 except ValueError:
                     price = None
             elif m_hkd and len(dests_found) >= 2:
-                # 多目的地裸价：不绑定
                 price = None
                 currency = None
     if price is None:

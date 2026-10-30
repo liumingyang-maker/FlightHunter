@@ -452,7 +452,7 @@ def materialize_raffle_candidates(
         )
         if existing_round:
             continue
-        # P2/N-016：中国内地出境适用性（出发地不明=待核实）；仅官方证据可正向核心推荐
+        # P2/N-016/R-010：证据驱动；关键词+官方来源 ≠ 已确认内地出境
         china_outbound = None
         core_recommend = False
         title_l = (title or "").lower()
@@ -462,25 +462,48 @@ def materialize_raffle_candidates(
         ):
             china_outbound = "not_travel_ticket"
         elif category == "flight_giveaway":
-            china_outbound = "unknown_origin_pending"
-            # N-016 正向路径：官方源 + 明确中国内地出境/出发表述才可核心推荐
-            official_src = source.kind == "official_tourism_board" or (
-                s.url
-                and "aggregator" not in (source.kind or "")
-                and source.kind in ("official_airline", "official_carrier", "official_event")
-            )
-            explicit_cn = bool(
+            # 明确排除 / 国内航段 → 绝不核心推荐
+            excluded = bool(
                 re.search(
-                    r"(中国内地|内地出发|中国大陆|China\s+mainland|from\s+Mainland\s+China|"
-                    r" mainland\s+China\s+departures|中国出发)",
+                    r"(不包括|不含|排除|exclude[sd]?|except|not\s+(?:valid\s+)?for|"
+                    r"不适用于|国内航班|国内航线|国内出发|domestic\s+flights?|"
+                    r"中国大陆出发.{0,8}(不|无|排除))",
                     title_z,
                     re.I,
                 )
             )
-            if official_src and explicit_cn:
-                china_outbound = "confirmed_mainland_outbound"
-                core_recommend = True
+            domestic_leg = bool(
+                re.search(r"(国内航班|国内航线|内地航班|domestic\s+flights?|domestic\s+routes?)", title_z, re.I)
+            )
+            official_src = bool(
+                source.kind
+                in (
+                    "official_tourism_board",
+                    "official_airline",
+                    "official_carrier",
+                    "official_event",
+                )
+                or (s.url and source.kind not in ("community", "search_api", "forum", "blog_aggregator"))
+            )
+            # 正向：官方直链 + 明确内地出境表述，且无排除/国内语义
+            explicit_cn = bool(
+                re.search(
+                    r"(中国内地出发|内地出发|中国大陆出发|from\s+Mainland\s+China|"
+                    r"mainland\s+China\s+departures|中国出发)",
+                    title_z,
+                    re.I,
+                )
+            )
+            has_official_url = bool(s.url or candidate_url or source.base_url)
+            if excluded or domestic_leg:
+                china_outbound = "excluded_or_domestic"
+                core_recommend = False
+            elif official_src and explicit_cn and has_official_url and source.kind == "official_tourism_board":
+                # 仅官方旅游局/航司直链 + 正向内地出境；仍保持 verify_status=candidate 由人工核实
+                china_outbound = "pending_official_outbound_evidence"
+                core_recommend = False  # R-010：candidate 不得标 confirmed/core
             else:
+                china_outbound = "unknown_origin_pending"
                 core_recommend = False
         elif category == "travel_package_unknown_air":
             china_outbound = "package_unknown_air_pending"
@@ -783,6 +806,7 @@ async def fetch_source(
             )
 
     # 统计口径：仅成功读取写 last_fetch_at；解析>0 才算有价值
+    # R-015：parsed>0 且无新增 → ok_existing，不是 ok_zero
     persisted_total = signals_persisted + offers_persisted + raffles_persisted
     if result.ok:
         source.last_fetch_at = now
@@ -791,6 +815,8 @@ async def fetch_source(
         if persisted_total and persisted_total > 0:
             source.last_valuable_at = now
             source.last_result = "ok_valuable"
+        elif parsed:
+            source.last_result = "ok_existing"
         else:
             source.last_result = "ok_zero"
     else:

@@ -43,11 +43,19 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 
 def check_alembic_head(settings: Settings) -> dict:
-    """N-017：报告迁移版本；create_all ≠ 迁移。正式库升级需用户授权。"""
+    """R-014：显式比较当前版本与 head；缺版本/过旧/未知分别报告。"""
     from pathlib import Path as _P
 
     path = sqlite_path(settings)
-    out = {"db_path": str(path), "exists": path.exists(), "alembic_version": None, "head": None, "ok": True}
+    out = {
+        "db_path": str(path),
+        "exists": path.exists(),
+        "alembic_version": None,
+        "head": None,
+        "ok": False,
+        "in_sync": False,
+        "state": "unknown",
+    }
     try:
         from alembic.config import Config
         from alembic.script import ScriptDirectory
@@ -59,35 +67,63 @@ def check_alembic_head(settings: Settings) -> dict:
         out["head"] = script.get_current_head()
     except Exception as exc:
         out["head_error"] = str(exc)
-    if path.exists():
-        try:
-            from sqlalchemy import create_engine, text
+        out["state"] = "head_unreadable"
+        return out
+    if not path.exists():
+        out["state"] = "new_db"
+        out["ok"] = True
+        out["in_sync"] = False
+        return out
+    try:
+        from sqlalchemy import create_engine, text
 
-            eng = create_engine(f"sqlite+pysqlite:///{path.as_posix()}", future=True)
-            with eng.connect() as conn:
-                has = conn.execute(
-                    text("SELECT name FROM sqlite_master WHERE type='table' AND name='alembic_version'")
-                ).fetchone()
-                if has:
-                    row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
-                    out["alembic_version"] = row[0] if row else None
-                else:
-                    out["alembic_version"] = None
-            eng.dispose()
-        except Exception as exc:
-            out["ok"] = False
-            out["error"] = str(exc)
+        eng = create_engine(f"sqlite+pysqlite:///{path.as_posix()}", future=True)
+        with eng.connect() as conn:
+            has = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name='alembic_version'")
+            ).fetchone()
+            if has:
+                row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+                out["alembic_version"] = row[0] if row else None
+            else:
+                out["alembic_version"] = None
+        eng.dispose()
+    except Exception as exc:
+        out["ok"] = False
+        out["error"] = str(exc)
+        out["state"] = "version_unreadable"
+        return out
+
+    ver, head = out["alembic_version"], out["head"]
+    if ver is None:
+        out["state"] = "no_version_table"
+        out["ok"] = False
+        out["in_sync"] = False
+    elif head is None:
+        out["state"] = "head_unknown"
+        out["ok"] = False
+        out["in_sync"] = False
+    elif ver == head:
+        out["state"] = "in_sync"
+        out["ok"] = True
+        out["in_sync"] = True
+    else:
+        out["state"] = "outdated"
+        out["ok"] = False
+        out["in_sync"] = False
     return out
 
 
 def ensure_migrations_or_warn(settings: Settings) -> dict:
-    """启动/CLI 用：新库 create_all；旧库若无版本表给出升级指导（不自动改正式库）。"""
+    """启动/CLI 用：按实际版本判定；正式库默认不自动升级。"""
     report = check_alembic_head(settings)
     path = sqlite_path(settings)
-    if not path.exists():
+    state = report.get("state")
+    if state == "new_db":
         return {**report, "action": "create_all_new_db"}
-    if report.get("alembic_version") is None and report.get("head"):
-        # 旧库无版本表：仅当用户配置允许才自动升级（默认不碰正式库）
+    if state == "in_sync":
+        return {**report, "action": "ok"}
+    if state == "no_version_table":
         if getattr(settings, "allow_auto_migrate", False):
             try:
                 from alembic import command
@@ -105,9 +141,15 @@ def ensure_migrations_or_warn(settings: Settings) -> dict:
         return {
             **report,
             "action": "needs_migration",
-            "hint": "python -m alembic upgrade head  # 请先备份 data/ 正式库再执行",
+            "hint": "备份 data/ 后执行: python -m alembic upgrade head",
         }
-    return {**report, "action": "ok"}
+    if state == "outdated":
+        return {
+            **report,
+            "action": "outdated",
+            "hint": f"当前 {report.get('alembic_version')} ≠ head {report.get('head')}；备份后 python -m alembic upgrade head",
+        }
+    return {**report, "action": "error"}
 
 
 def init_db(engine: Engine) -> None:

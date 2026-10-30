@@ -15,7 +15,12 @@ from app import __version__
 from app.config import Settings, load_settings
 from app.core.errors import FlightHunterError
 from app.core.ids import new_id
-from app.db.session import create_db_engine, init_db, make_session_factory
+from app.db.session import (
+    create_db_engine,
+    ensure_migrations_or_warn,
+    init_db,
+    make_session_factory,
+)
 from app.web.auth import AuthMiddleware, ensure_runtime_secrets
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -25,6 +30,16 @@ STATIC_DIR = Path(__file__).parent / "static"
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     ensure_runtime_secrets(settings)
+    # R-014：启动时检查迁移版本（不自动改正式库）
+    mig = ensure_migrations_or_warn(settings)
+    if mig.get("action") in ("needs_migration", "outdated", "error", "migrate_failed"):
+        import logging
+
+        logging.getLogger("flighthunter").warning(
+            "DB migration check: %s — %s",
+            mig.get("action"),
+            mig.get("hint") or mig.get("error") or mig.get("state"),
+        )
     engine = create_db_engine(settings)
     init_db(engine)
     factory: sessionmaker[Session] = make_session_factory(engine)

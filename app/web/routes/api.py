@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
@@ -345,11 +346,12 @@ def fare_intel(
         "my_origin",
         description="my_origin|china_mainland|hk_mo|global_error",
     ),
-    destination: str | None = Query(None, description="IATA or city keyword filter"),
+    destination: str | None = Query(None, description="IATA or destination city (not airline brand)"),
     category: str | None = Query(None, description="suspected_bug_fare|official_or_flash_promo|..."),
-    date_from: str | None = Query(None, description="YYYY-MM-DD travel/publish lower bound"),
+    date_from: str | None = Query(None, description="YYYY-MM-DD lower bound"),
     date_to: str | None = Query(None, description="YYYY-MM-DD upper bound"),
     feedback: str | None = Query(None, description="bookmarked|useful|ignore"),
+    time_field: str = Query("auto", description="auto|travel|published|found"),
 ):
     """P1 四频道情报（统一库；无实时报价依赖）。"""
     from app.services.airports.china import expand_origin_selection
@@ -393,10 +395,22 @@ def fare_intel(
     folded = routed["folded"]
     # N-018：目的地 / 类别 / 时间 / 反馈筛选（未知项不会被误当作已匹配）
     primary = _apply_intel_filters(
-        primary, destination=destination, category=category, date_from=date_from, date_to=date_to, feedback=feedback
+        primary,
+        destination=destination,
+        category=category,
+        date_from=date_from,
+        date_to=date_to,
+        feedback=feedback,
+        time_field=time_field,
     )
     folded = _apply_intel_filters(
-        folded, destination=destination, category=category, date_from=date_from, date_to=date_to, feedback=feedback
+        folded,
+        destination=destination,
+        category=category,
+        date_from=date_from,
+        date_to=date_to,
+        feedback=feedback,
+        time_field=time_field,
     )
     primary = primary[:limit]
     folded = folded[:20]
@@ -419,6 +433,7 @@ def fare_intel(
                 "date_from": date_from,
                 "date_to": date_to,
                 "feedback": feedback,
+                "time_field": time_field,
             },
         }
     )
@@ -432,19 +447,56 @@ def _apply_intel_filters(
     date_from: str | None,
     date_to: str | None,
     feedback: str | None,
+    time_field: str | None = None,
 ) -> list[dict]:
-    """结构化筛选：缺失字段在指定过滤时排除（不误作匹配）。"""
+    """结构化筛选：缺失字段在指定过滤时排除（不误作匹配）。
+
+    R-007：反馈用 user_feedback（与 signal_status 同源）。
+    R-009：目的地只匹配结构化 destination_airport / 明确目的地城市，不把航司名当目的地。
+    """
     from datetime import datetime
+
+    # 目的地城市别名 → IATA（仅目的地语境，不含航司品牌）
+    _DEST_ALIAS = {
+        "香港": "HKG",
+        "HK": "HKG",
+        "澳门": "MFM",
+        "澳門": "MFM",
+        "大阪": "KIX",
+        "东京": "NRT",
+        "首尔": "ICN",
+        "台北": "TPE",
+        "台湾": None,  # 台湾非单一机场
+        "上海": "PVG",
+        "北京": "PEK",
+        "成都": "TFU",
+    }
 
     out = rows
     if destination:
         d = destination.strip().upper()
-        dl = destination.strip().lower()
+        alias = _DEST_ALIAS.get(destination.strip(), None)
+        if alias is None and destination.strip() in _DEST_ALIAS:
+            # 台湾等：仅结构化字段或明确目的地词在 dest 位
+            alias = ""
 
         def dest_match(it: dict) -> bool:
             code = (it.get("destination_airport") or "").upper()
-            title = (it.get("title") or "").lower()
-            return bool(code and code == d) or bool(dl and dl in title)
+            if d and code == d:
+                return True
+            if alias and code == alias:
+                return True
+            # 明确「→城市」目的语境，不匹配航司名/出发语境
+            title = it.get("title") or ""
+            if destination.strip() and re.search(
+                r"(?:→|->|至|飞|to)\s*" + re.escape(destination.strip()), title, re.I
+            ):
+                return True
+            # dest 字段城市名
+            dest_city = (it.get("destination_city") or "") or ""
+            if dest_city and dest_city == destination.strip():
+                return True
+            return False
 
         out = [it for it in out if dest_match(it)]
     if category:
@@ -452,7 +504,11 @@ def _apply_intel_filters(
         out = [it for it in out if (it.get("category") or "") == cat]
     if feedback:
         fb = feedback.strip()
-        out = [it for it in out if (it.get("user_feedback") or "") == fb]
+        out = [
+            it
+            for it in out
+            if (it.get("user_feedback") or it.get("signal_status") or "") == fb
+        ]
 
     def _parse_dt(s: str | None):
         if not s:
@@ -465,14 +521,35 @@ def _apply_intel_filters(
     dfrom = _parse_dt(date_from)
     dto = _parse_dt(date_to)
     if dfrom or dto:
+        field = (time_field or "auto").strip()
+
+        def pick_time(it: dict):
+            if field == "travel":
+                # 出行时间：travel_date_hint / travel 窗口
+                for k in ("travel_date_hint", "travel_window_start", "travel_date"):
+                    if it.get(k):
+                        raw = it.get(k)
+                        if isinstance(raw, str) and len(raw) >= 10:
+                            return _parse_dt(raw[:10])
+                        return _parse_dt(str(raw))
+                return None
+            if field == "published":
+                return _parse_dt(it.get("published_at") if isinstance(it.get("published_at"), str) else None)
+            if field == "found":
+                return _parse_dt(it.get("found_at") if isinstance(it.get("found_at"), str) else None)
+            # auto：优先出行→发布→发现
+            for k in ("travel_date_hint", "published_at", "found_at"):
+                raw = it.get(k)
+                if not raw:
+                    continue
+                if isinstance(raw, str) and len(raw) >= 10:
+                    dt = _parse_dt(raw[:10] if k == "travel_date_hint" else raw)
+                    if dt:
+                        return dt
+            return None
 
         def time_ok(it: dict) -> bool:
-            # 用 published_at 优先，否则 found_at；都缺则过滤时不匹配
-            raw = it.get("published_at") or it.get("found_at")
-            dt = _parse_dt(raw if isinstance(raw, str) else None)
-            if dt is None and not isinstance(raw, str):
-                # 可能已是 datetime 字符串化
-                dt = _parse_dt(str(raw) if raw else None)
+            dt = pick_time(it)
             if dt is None:
                 return False
             if dfrom and dt.date() < dfrom.date():

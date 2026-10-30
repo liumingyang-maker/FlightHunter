@@ -549,8 +549,11 @@ def build_intel_view(
         if not s.airline:
             s.airline = extract_airline(title)
 
-        # 国际判定：任一出发地→目的地为国际；或全国促销无机场
-        from app.services.airports.china import is_international_pair
+        # 国际判定：以出发↔目的组合判断；纯内地对才排除（R-008：HKG↔PVG 是跨境）
+        from app.services.airports.china import (
+            is_china_mainland_airport,
+            is_international_pair,
+        )
 
         intl = None
         for o in all_origins or ([s.origin_airport] if s.origin_airport else []):
@@ -559,16 +562,22 @@ def build_intel_view(
                 intl = True
                 break
             if pair is False and filt.exclude_domestic:
-                # 若标题还有其他国际目的地线索则保留
                 if not s.destination_airport:
                     continue
         if filt.exclude_domestic and s.destination_airport:
-            from app.services.airports.china import is_china_mainland_airport
-
-            if is_china_mainland_airport(s.destination_airport):
-                continue
+            # 仅当所有已知出发都是内地且目的也是内地 → 国内对排除
+            known_origins = [o for o in (all_origins or []) if o]
+            if s.origin_airport:
+                known_origins = [s.origin_airport, *known_origins]
+            if known_origins and all(is_china_mainland_airport(o) for o in known_origins):
+                if is_china_mainland_airport(s.destination_airport):
+                    continue
+            # 港澳/未知出发 + 内地目的：保留（跨境）
         if filt.exclude_domestic and intl is False and s.destination_airport:
-            continue
+            # intl False 且双方均已知内地才排除
+            o0 = (all_origins or [s.origin_airport])[0] if (all_origins or s.origin_airport) else None
+            if o0 and is_china_mainland_airport(o0) and is_china_mainland_airport(s.destination_airport):
+                continue
 
         cat = classify_signal(s)
         if filt.categories and cat not in filt.categories:
@@ -660,6 +669,11 @@ def build_intel_view(
                 "international": intl,
                 "confidence": s.confidence,
                 "signal_status": s.signal_status,
+                # R-007：反馈字段与 signal_status 同源，供 UI/API 筛选
+                "user_feedback": s.signal_status
+                if (s.signal_status or "") in FEEDBACK_STATES
+                else None,
+                "travel_date_hint": getattr(s, "travel_date_hint", None),
                 "priority": priority,
                 "is_live_bookable_price": False,  # 情报模式硬约束
                 "city_match_level": city_match_level,

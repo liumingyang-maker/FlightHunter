@@ -25,6 +25,7 @@ from app.models.fare import (
 from app.models.shared import (
     Evidence,
     Notification,
+    NotificationDelivery,
     Profile,
     RawCandidate,
     Source,
@@ -65,6 +66,7 @@ __all__ = [
     "FareWatch",
     "FareWatchMatch",
     "Notification",
+    "NotificationDelivery",
     "Organizer",
     "Profile",
     "RawCandidate",

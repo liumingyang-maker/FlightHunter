@@ -164,8 +164,9 @@ def test_n016_core_recommend_positive_path_exists():
     from app.services.discovery import service as svc
 
     src = inspect.getsource(svc.materialize_raffle_candidates)
-    assert "confirmed_mainland_outbound" in src
-    assert "core_recommend = True" in src
+    # R-010：candidate 不得直接 core_recommend=True；排除/国内语义必须存在
+    assert "excluded_or_domestic" in src
+    assert "core_recommend = True" not in src
 
 
 def test_b3_api_filter_helper():
