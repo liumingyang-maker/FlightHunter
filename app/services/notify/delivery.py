@@ -20,21 +20,35 @@ from app.services.notify.service import notify
 
 
 def deliver_windows_toast(title: str, body: str) -> dict[str, Any]:
-    ps = (
-        "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null;"
-        "$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent('ToastText02');"
-        "$n = $t.GetElementsByTagName('text');"
-        f"$n.Item(0).AppendChild($t.CreateTextNode('{title.replace(chr(39), '')}')) | Out-Null;"
-        f"$n.Item(1).AppendChild($t.CreateTextNode('{body.replace(chr(39), '')}')) | Out-Null;"
+    """使用 pwsh（非 Windows PowerShell 5.1）；标题/正文经 Base64 传参避免拼接注入。"""
+    import base64
+    import shutil
+
+    t_b64 = base64.b64encode(title.encode("utf-16-le")).decode("ascii")
+    b_b64 = base64.b64encode(body.encode("utf-16-le")).decode("ascii")
+    script = (
+        "$t=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($env:FH_TOAST_TITLE));"
+        "$b=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($env:FH_TOAST_BODY));"
+        "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] | Out-Null;"
+        "$x=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent('ToastText02');"
+        "$n=$x.GetElementsByTagName('text');"
+        "$n.Item(0).AppendChild($x.CreateTextNode($t)) | Out-Null;"
+        "$n.Item(1).AppendChild($x.CreateTextNode($b)) | Out-Null;"
         "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('FlightHunter').Show("
-        "[Windows.UI.Notifications.ToastNotification]::new($t));"
+        "[Windows.UI.Notifications.ToastNotification]::new($x));"
     )
+    pwsh = shutil.which("pwsh") or shutil.which("pwsh.exe") or r"C:\Program Files\PowerShell\7\pwsh.exe"
     try:
         r = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps],
+            [pwsh, "-NoProfile", "-NonInteractive", "-Command", script],
             capture_output=True,
             text=True,
             timeout=15,
+            env={
+                **__import__("os").environ,
+                "FH_TOAST_TITLE": t_b64,
+                "FH_TOAST_BODY": b_b64,
+            },
         )
         if r.returncode == 0:
             return {"channel": "windows_toast", "status": "toast_delivered"}
@@ -75,17 +89,17 @@ def send_notification(
     )
     if n is None or n.suppressed_reason:
         return n
-    # D-009：同 content_hash 已外送过则不再 console/toast
-    if "[delivery]" in (n.body or ""):
-        n.body = ((n.body or "") + "\n[delivery_skipped:already_sent]")[:4000]
+    # D-009/N-010：标记放在 body 开头，避免长正文截断丢失
+    if "[D]" in (n.body or "")[:20]:
+        n.body = "[D][skip_dup]" + (n.body or "")[:3980]
         session.flush()
         return n
 
     deliveries = [deliver_console(title, body)]
     if try_toast:
         deliveries.append(deliver_windows_toast(title, body))
-    note = "\n\n[delivery]\n" + json.dumps(deliveries, ensure_ascii=False)
-    n.body = ((n.body or "") + note)[:4000]
+    note = "[D]" + json.dumps(deliveries, ensure_ascii=False)[:200]
+    n.body = (note + "\n" + (n.body or ""))[:4000]
     session.flush()
     return n
 

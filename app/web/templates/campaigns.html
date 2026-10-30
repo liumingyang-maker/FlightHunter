@@ -21,7 +21,7 @@
         {% endif %}
       </td>
       <td><span class="badge">{{ r.verify_status }}</span></td>
-      <td>{% if r.demo_only %}<span class="badge warn">fixture</span>{% else %}真实{% endif %}</td>
+      <td>{% if r.demo_only %}<span class="badge warn">fixture</span>{% elif r.verify_status == 'verified' %}已核实{% else %}<span class="badge">线索/待核实</span>{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -224,12 +224,22 @@ def _ocr_image_bytes(data: bytes, *, langs: str | None = None, page_lang: str | 
 
 
 def _ocr_image_url(url: str, *, timeout: float = 40.0, page_lang: str | None = None) -> tuple[str, str]:
-    import httpx
+    import asyncio
 
-    headers = {"User-Agent": "FlightHunter-Bot/1.0 (evidence extract)"}
-    r = httpx.get(url, headers=headers, timeout=timeout, follow_redirects=True)
-    r.raise_for_status()
-    return _ocr_image_bytes(r.content, page_lang=page_lang)
+    from app.core.safe_http import safe_get
+
+    async def _run():
+        return await safe_get(
+            url,
+            timeout=timeout,
+            headers={"User-Agent": "FlightHunter-Bot/1.0 (evidence extract)"},
+            check_robots=True,
+        )
+
+    result = asyncio.run(_run())
+    if not result.ok or not result.content:
+        raise RuntimeError(result.error or "ocr_fetch_failed")
+    return _ocr_image_bytes(result.content, page_lang=page_lang)
 
 
 def _parse_date_flexible(s: str) -> datetime | None:

@@ -600,28 +600,36 @@ def eligibility_with_synthetic_profile(
         checks.append({"code": "PURCHASE_REQUIRED", "outcome": "unknown", "note": "未解析到购买要求"})
         reasons.append("PURCHASE_RULE_UNKNOWN")
 
-    # 非韩国公民 / 不居住韩国
     res_text = (rules.residency_restriction or "").lower()
-    if "non-korean citizens" in res_text or "do not reside in korea" in res_text:
-        if nationality is None and residence is None:
+    needs_non_kr = any(
+        k in res_text
+        for k in ("non-korean citizens", "do not reside in korea", "non-residents of korea")
+    )
+    if needs_non_kr:
+        if nationality is None or residence is None:
             checks.append(
                 {
                     "code": "RESIDENCY_OR_NATIONALITY",
                     "outcome": "unknown",
-                    "note": f"规则限制存在: {rules.residency_restriction}；用户国籍/居住未知",
+                    "note": f"规则限制存在；档案 nationality={nationality!r} residence={residence!r} 缺一不可判",
                 }
             )
-            reasons.append("USER_NATIONALITY_OR_RESIDENCE_UNKNOWN")
+            reasons.append("USER_NATIONALITY_OR_RESIDENCE_INCOMPLETE")
         else:
-            # 若明确是韩国公民或居住韩国 → ineligible；否则 pass
-            nat = (nationality or "").upper()
-            res = (residence or "").upper()
-            if nat in {"KR", "KOREA", "SOUTH KOREA", "韩国"} or res in {"KR", "KOREA", "SOUTH KOREA", "韩国"}:
+            nat = nationality.upper()
+            res = residence.upper()
+            conflict = nat in {"KR", "KOREA", "SOUTH KOREA", "韩国"} or res in {
+                "KR",
+                "KOREA",
+                "SOUTH KOREA",
+                "韩国",
+            }
+            if conflict:
                 checks.append(
                     {
                         "code": "RESIDENCY_OR_NATIONALITY",
                         "outcome": "ineligible",
-                        "note": "官方限制非韩国公民/不居住韩国；档案显示冲突",
+                        "note": "官方限制与档案冲突",
                     }
                 )
                 state = "ineligible"
@@ -631,7 +639,7 @@ def eligibility_with_synthetic_profile(
                     {
                         "code": "RESIDENCY_OR_NATIONALITY",
                         "outcome": "pass",
-                        "note": f"档案 {nationality}/{residence} 不与限制冲突（合成测试档案）",
+                        "note": "档案均非韩国公民/居住且与限制不冲突",
                     }
                 )
     else:
@@ -644,15 +652,15 @@ def eligibility_with_synthetic_profile(
         )
         reasons.append("RESIDENCY_RULE_UNKNOWN")
 
-    if age is not None and age < 18:
+    if age is None:
+        checks.append({"code": "AGE", "outcome": "unknown", "note": "年龄未知（不得假定 18+）"})
+        reasons.append("AGE_UNKNOWN")
+    elif age < 18:
         checks.append({"code": "AGE", "outcome": "ineligible", "note": "未成年"})
         state = "ineligible"
         reasons.append("AGE")
-    elif age is not None:
-        checks.append({"code": "AGE", "outcome": "pass", "note": f"age={age}"})
     else:
-        checks.append({"code": "AGE", "outcome": "unknown", "note": "年龄未知"})
-        reasons.append("AGE_UNKNOWN")
+        checks.append({"code": "AGE", "outcome": "pass", "note": f"age={age}"})
 
     if state != "ineligible":
         if any(c["outcome"] == "unknown" for c in checks):

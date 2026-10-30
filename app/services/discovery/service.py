@@ -787,7 +787,13 @@ async def fetch_source(
     ]
     business_status = "failed"
     if result.ok:
-        business_status = "ok" if (signals_persisted + offers_persisted + raffles_persisted) > 0 else "ok_zero"
+        persisted = signals_persisted + offers_persisted + raffles_persisted
+        if parsed and persisted == 0:
+            business_status = "ok_existing"
+        elif parsed:
+            business_status = "ok"
+        else:
+            business_status = "ok_zero"
     return {
         "source_id": source.id,
         "module": effective_module,
@@ -884,7 +890,7 @@ async def run_discovery(
                     {
                         "source_id": None,
                         "status": "post_raffle_auto_verify",
-                        "verified": sum(1 for r in verify_results if r.get("ok")),
+                        "auto_extracted_count": sum(1 for r in verify_results if r.get("ok")),
                         "failed": sum(1 for r in verify_results if not r.get("ok")),
                         "steps": verify_results,
                     }

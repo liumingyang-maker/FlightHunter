@@ -457,6 +457,8 @@ def classify_signal(signal: FareDealSignal) -> str:
         return "hidden_city"
     if "award_space" in types or "mileage" in types:
         return "mileage_promo"
+    if signal.source_type == "community" and "flash_sale" in types:
+        return "community_deal_tip"
     if "flash_sale" in types:
         return "official_or_flash_promo"
     if signal.source_type == "community":

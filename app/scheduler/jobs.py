@@ -279,7 +279,7 @@ def run_raffle_pipeline(
             {
                 "ok": ok,
                 "failed": failed,
-                "auto_verified": verified,
+                "auto_extracted_count": verified,
                 "steps": [
                     {k: r.get(k) for k in ("status", "source_id", "verified", "failed", "open_status")}
                     for r in results

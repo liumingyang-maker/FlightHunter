@@ -97,10 +97,8 @@ def _build_zh_guide(ext, tags: dict, entry_url: str | None) -> str:
 
 
 async def probe_entry_url(url: str, *, timeout: float = 20.0) -> dict[str, Any]:
-    """只读探测报名/活动入口；不登录、不提交。"""
-    import httpx
-
-    from app.core.url_safety import assert_public_http_url
+    """只读探测报名/活动入口；不登录、不提交。使用统一安全 GET。"""
+    from app.core.safe_http import safe_get
 
     out: dict[str, Any] = {
         "url": url,
@@ -109,42 +107,38 @@ async def probe_entry_url(url: str, *, timeout: float = 20.0) -> dict[str, Any]:
         "error": None,
         "requires_human": False,
         "note": "",
+        "redirects": None,
     }
-    try:
-        assert_public_http_url(url)
-    except Exception as exc:
-        out["error"] = f"unsafe:{exc}"
+    result = await safe_get(
+        url,
+        timeout=timeout,
+        headers={"User-Agent": "FlightHunter-Bot/1.0 (entry probe, low frequency)"},
+        check_robots=True,
+    )
+    out["status_code"] = result.status_code
+    out["redirects"] = result.redirects
+    out["final_url"] = result.final_url
+    if result.robots_blocked:
+        out["error"] = "robots_disallowed"
+        out["note"] = "blocked_by_robots"
         return out
-    try:
-        headers = {"User-Agent": "FlightHunter-Bot/1.0 (entry probe, low frequency)"}
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            resp = await client.get(url, headers=headers)
-        out["status_code"] = resp.status_code
-        if resp.status_code == 200:
-            text = resp.text or ""
-            low = text.lower()
-            if any(x in low for x in ("no available surveys", "already participated")):
-                out["note"] = "page_indicates_unavailable_or_done"
-                out["requires_human"] = True
-            elif any(x in low for x in ("login", "signin", "password")) and "join now" in low:
-                out["note"] = "login_or_join_gate"
-                out["requires_human"] = True
-                out["ok"] = True
-            else:
-                out["ok"] = True
-                out["note"] = "http_200_readonly"
-        elif resp.status_code in (401, 403, 429):
-            out["error"] = f"http_{resp.status_code}"
+    if not result.ok:
+        out["error"] = result.error
+        if result.status_code in (401, 403, 429):
             out["requires_human"] = True
-            out["note"] = "blocked_by_site_policy"
-        elif resp.status_code >= 500:
-            out["error"] = f"http_{resp.status_code}"
-            out["note"] = "server_error_temporary"
-        else:
-            out["error"] = f"http_{resp.status_code}"
-    except Exception as exc:
-        out["error"] = type(exc).__name__
-        out["note"] = str(exc)[:200]
+        return out
+    text = (result.text or "").lower()
+    if any(x in text for x in ("no available surveys", "already participated")):
+        out["note"] = "page_indicates_unavailable_or_done"
+        out["requires_human"] = True
+        out["ok"] = True
+    elif any(x in text for x in ("login", "signin", "password")) and "join now" in text:
+        out["note"] = "login_or_join_gate"
+        out["requires_human"] = True
+        out["ok"] = True
+    else:
+        out["ok"] = True
+        out["note"] = "http_200_readonly"
     return out
 
 

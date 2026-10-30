@@ -218,13 +218,14 @@ def update_trip(session: Session, settings: Settings, trip_id: str, payload: Tri
             session.add(_segment_to_model(trip.id, seg))
         session.flush()
 
-    # P3 D-001：任何普通编辑都不得为未确认行程打开正式扫描
+    # P3 D-001/N-007：未确认/demo 永不正式扫；已确认不因关闭“改期重扫”被停用
     if trip.demo_only:
         register_trip_scans(session, settings, trip, enabled=False)
-    elif trip.confirmed and settings.trip_monitoring.auto_scan_on_trip_change:
-        register_trip_scans(session, settings, trip)
+    elif trip.confirmed:
+        if settings.trip_monitoring.auto_scan_on_trip_change:
+            register_trip_scans(session, settings, trip)
+        # auto_scan_on_trip_change=False 只是不因编辑自动重扫，不得禁用已有 enabled 订阅
     else:
-        # 未确认：停用已有订阅，防止错误 enabled 残留
         for sub in session.scalars(
             select(TripScanSubscription).where(TripScanSubscription.trip_id == trip.id)
         ).all():
@@ -232,6 +233,7 @@ def update_trip(session: Session, settings: Settings, trip_id: str, payload: Tri
                 sub.enabled = False
                 if not sub.paused_reason:
                     sub.paused_reason = "trip_not_confirmed"
+        trip.scan_registered = False
 
     session.flush()
     rematch_trip_benefits(session, trip)
