@@ -322,9 +322,12 @@ def _looks_noise_intel(title: str) -> bool:
 
 def classify_signal(signal: FareDealSignal) -> str:
     types = set(_deal_types(signal))
-    if "error_fare" in types:
+    title_l = (signal.title or "").lower()
+    if "error_fare" in types or any(
+        k in title_l for k in ("bug fare", "error fare", "mistake fare", "错价")
+    ):
         return "suspected_bug_fare"
-    if "fuel_surcharge_anomaly" in types:
+    if "fuel_surcharge_anomaly" in types or "fuel dump" in title_l or "漏油" in title_l:
         return "fuel_anomaly"
     if "hidden_city" in types:
         return "hidden_city"

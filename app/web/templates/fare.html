@@ -1,76 +1,50 @@
 {% extends "base.html" %}
 {% block title %}国际机票情报{% endblock %}
 {% block content %}
-<div class="page-head">
-  <h1>国际机票情报雷达</h1>
-</div>
+<div class="page-head"><h1>国际机票情报</h1></div>
 <div class="card warn-box">
-  <strong>情报模式：</strong>{{ note }}。不代购、不支付；疑似错价需自行承担风险。
+  <strong>情报模式：</strong>{{ note }}。不代购；报道价≠可买价。
 </div>
 
-<section class="card" id="origin-panel">
-  <h2>出发地筛选</h2>
-  <p class="muted">默认重庆/成都；「全国出发」仅含中国内地机场；香港/澳门需单独勾选。</p>
-  <div class="origin-row">
-    <label class="chip"><input type="checkbox" id="ckg" value="CKG" checked> 重庆 CKG</label>
-    <label class="chip"><input type="checkbox" id="tfu" value="TFU" checked> 成都 TFU</label>
-    <label class="chip"><input type="checkbox" id="ctu" value="CTU" checked> 成都 CTU</label>
-    <label class="chip"><input type="checkbox" id="pek" value="PEK"> 北京 PEK</label>
-    <label class="chip"><input type="checkbox" id="pvg" value="PVG"> 上海 PVG</label>
-    <label class="chip"><input type="checkbox" id="sha" value="SHA"> 上海 SHA</label>
-    <label class="chip"><input type="checkbox" id="can" value="CAN"> 广州 CAN</label>
-    <label class="chip"><input type="checkbox" id="szx" value="SZX"> 深圳 SZX</label>
-    <label class="chip"><input type="checkbox" id="hgh" value="HGH"> 杭州 HGH</label>
-    <label class="chip"><input type="checkbox" id="wuh" value="WUH"> 武汉 WUH</label>
-    <label class="chip"><input type="checkbox" id="kmg" value="KMG"> 昆明 KMG</label>
+<section class="card" id="channel-tabs">
+  <div class="tabs">
+    <button type="button" class="tab active" data-ch="my_origin">我的出发地</button>
+    <button type="button" class="tab" data-ch="china_mainland">全国出发</button>
+    <button type="button" class="tab" data-ch="hk_mo">香港／澳门</button>
+    <button type="button" class="tab" data-ch="global_error">全球错价</button>
   </div>
-  <div class="origin-row" style="margin-top:12px">
-    <label class="chip strong">
-      <input type="checkbox" id="nationwide"> 全国出发（仅中国内地 · {{ mainland_count }} 机场）
-    </label>
-    <label class="chip hk">
-      <input type="checkbox" id="hkg"> 香港 HKG（独立）
-    </label>
-    <label class="chip mo">
-      <input type="checkbox" id="mfm"> 澳门 MFM（独立）
-    </label>
+</section>
+
+<section class="card" id="origin-panel" hidden>
+  <h2>出发地筛选 <span class="muted" id="ch-label"></span></h2>
+  <div class="origin-row" id="origin-chips"></div>
+  <div class="origin-row" style="margin-top:10px">
+    <label class="chip strong"><input type="checkbox" id="nationwide"> 全国出发（仅内地）</label>
+    <label class="chip hk"><input type="checkbox" id="hkg"> 香港 HKG</label>
+    <label class="chip mo"><input type="checkbox" id="mfm"> 澳门 MFM</label>
   </div>
-  <div class="origin-row" style="margin-top:12px">
-    <button type="button" id="btn-apply" class="btn">应用筛选</button>
-    <button type="button" id="btn-reset" class="btn">恢复默认</button>
-    <button type="button" id="btn-clear" class="btn">清除筛选</button>
+  <div class="origin-row" style="margin-top:10px">
+    <button type="button" id="btn-apply" class="btn">应用</button>
+    <button type="button" id="btn-reset" class="btn">默认 CKG/TFU/CTU</button>
+    <label class="chip"><input type="checkbox" id="hide_expired" checked> 隐藏过期</label>
     <span id="origin-status" class="muted"></span>
   </div>
 </section>
 
 <section class="card">
-  <h2>情报列表 <span class="muted" id="intel-count"></span></h2>
-  <div id="intel-empty" class="muted" hidden>当前筛选下暂无情报。可尝试「全国出发」或清除筛选。</div>
+  <h2>情报 <span class="muted" id="intel-count"></span></h2>
+  <div id="intel-empty" class="muted" hidden>当前频道暂无匹配情报。</div>
   <div id="intel-list"></div>
-</section>
-
-<section class="card">
-  <h2>航线愿望单</h2>
-  {% if watches %}
-  <table>
-    <thead><tr><th>名称</th><th>出发</th><th>人数</th><th>状态</th></tr></thead>
-    <tbody>
-      {% for w in watches %}
-      <tr>
-        <td>{{ w.name }}</td>
-        <td>{{ w.origin_airports }}</td>
-        <td>{{ w.adults }}</td>
-        <td>{{ w.scan_status }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted">暂无愿望单。情报列表不依赖愿望单。</p>
-  {% endif %}
+  <div id="folded-wrap" hidden>
+    <h3 style="margin-top:20px">可能适用我的城市（全国/待核实）</h3>
+    <div id="folded-list" class="muted-box"></div>
+  </div>
 </section>
 
 <style>
+.tabs { display:flex; flex-wrap:wrap; gap:8px; }
+.tab { padding:8px 14px; border:1px solid #ccc; border-radius:6px; background:#fff; cursor:pointer; font-size:14px; }
+.tab.active { background:#1a56db; color:#fff; border-color:#1a56db; }
 .origin-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .chip { display:inline-flex; align-items:center; gap:4px; padding:6px 10px; border:1px solid #ccc; border-radius:16px; font-size:14px; cursor:pointer; background:#fff; }
 .chip.strong { background:#e8f4ff; border-color:#4a90d9; }
@@ -78,150 +52,194 @@
 .chip.mo { background:#f3e8ff; border-color:#8b5cf6; }
 .btn { padding:8px 14px; border:1px solid #333; border-radius:6px; background:#f5f5f5; cursor:pointer; }
 .intel-item { border-bottom:1px solid #eee; padding:12px 0; }
-.intel-item h3 { margin:0 0 6px; font-size:16px; }
+.intel-item h3 { margin:0 0 6px; font-size:15px; }
 .intel-meta { font-size:13px; color:#555; display:flex; flex-wrap:wrap; gap:10px; }
 .badge-cat { display:inline-block; padding:2px 8px; border-radius:4px; font-size:12px; background:#eee; }
 .badge-cat.bug { background:#ffe0e0; }
 .badge-cat.fuel { background:#fff0d0; }
 .badge-cat.official { background:#e0f5e0; }
-.intel-links a { margin-right:10px; }
-@media (max-width: 640px) {
-  .chip { font-size:13px; padding:5px 8px; }
-  .origin-row { gap:6px; }
+.muted-box { opacity:0.85; margin-top:8px; }
+@media (max-width:640px) {
+  .tab { font-size:13px; padding:6px 10px; flex:1 1 45%; }
 }
 </style>
 
 <script>
 (function () {
-  const STORAGE_KEY = "fh_fare_origins_v1";
-  const DEFAULT = { codes: ["CKG","TFU","CTU"], nationwide: false, hkg: false, mfm: false };
-  const $ = (id) => document.getElementById(id);
-  const codeBoxes = ["ckg","tfu","ctu","pek","pvg","sha","can","szx","hgh","wuh","kmg"].map((id) => $(id));
+  const STORAGE_KEY = "fh_fare_channels_v1";
+  const CHIPS = [
+    ["CKG","重庆"],["TFU","成都 TFU"],["CTU","成都 CTU"],["PEK","北京"],
+    ["PVG","上海 PVG"],["SHA","上海 SHA"],["CAN","广州"],["SZX","深圳"],
+    ["HGH","杭州"],["WUH","武汉"],["KMG","昆明"]
+  ];
+  let state = {
+    channel: "my_origin",
+    codes: ["CKG","TFU","CTU"],
+    nationwide: false,
+    hkg: false,
+    mfm: false,
+    hide_expired: true,
+  };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) state = Object.assign(state, JSON.parse(raw));
+  } catch (e) {}
+
+  function $(id) { return document.getElementById(id); }
+  function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {} }
+
+  function renderChips() {
+    const box = $("origin-chips");
+    box.innerHTML = "";
+    const set = new Set(state.codes || []);
+    CHIPS.forEach(([code, label]) => {
+      const lab = document.createElement("label");
+      lab.className = "chip";
+      lab.innerHTML = '<input type="checkbox" value="' + code + '"' + (set.has(code) ? " checked" : "") + "> " + label;
+      box.appendChild(lab);
+    });
+    $("nationwide").checked = !!state.nationwide;
+    $("hkg").checked = !!state.hkg;
+    $("mfm").checked = !!state.mfm;
+    $("hide_expired").checked = state.hide_expired !== false;
+  }
 
   function readUI() {
-    const codes = codeBoxes.filter((c) => c.checked).map((c) => c.value);
-    return {
-      codes,
-      nationwide: $("nationwide").checked,
-      hkg: $("hkg").checked,
-      mfm: $("mfm").checked,
-    };
+    state.codes = [...document.querySelectorAll("#origin-chips input:checked")].map((c) => c.value);
+    state.nationwide = $("nationwide").checked;
+    state.hkg = $("hkg").checked;
+    state.mfm = $("mfm").checked;
+    state.hide_expired = $("hide_expired").checked;
   }
-  function applyUI(pref) {
-    const set = new Set(pref.codes || []);
-    codeBoxes.forEach((c) => { c.checked = set.has(c.value); });
-    $("nationwide").checked = !!pref.nationwide;
-    $("hkg").checked = !!pref.hkg;
-    $("mfm").checked = !!pref.mfm;
-  }
-  function buildQuery(pref) {
-    const parts = [];
-    if (pref.nationwide) parts.push("mode=china_all");
-    if (pref.codes && pref.codes.length) parts.push("origins=" + encodeURIComponent(pref.codes.join(",")));
-    if (pref.hkg) parts.push("include_hkg=1");
-    if (pref.mfm) parts.push("include_mfm=1");
-    parts.push("hide_expired=1");
-    parts.push("limit=40");
-    return parts.join("&");
-  }
-  function catBadge(cat) {
+
+  function catBadge(cat, isErr) {
+    if (isErr) return '<span class="badge-cat bug">全球错价/异常</span>';
     const map = {
-      suspected_bug_fare: ["疑似错价 Bug Fare", "bug"],
-      fuel_anomaly: ["漏油/燃油异常", "fuel"],
-      official_or_flash_promo: ["官方/限时促销", "official"],
-      community_deal_tip: ["社区爆料", ""],
-      mileage_promo: ["里程促销", ""],
-      hidden_city: ["甩尾风险", "bug"],
-      other_intl_deal: ["其他国际优惠", ""],
+      suspected_bug_fare: ["疑似错价","bug"],
+      fuel_anomaly: ["漏油/燃油异常","fuel"],
+      official_or_flash_promo: ["官方/限时促销","official"],
+      community_deal_tip: ["社区爆料",""],
+      mileage_promo: ["里程促销",""],
+      hidden_city: ["甩尾风险","bug"],
+      other_intl_deal: ["其他国际优惠",""],
     };
-    const [label, cls] = map[cat] || [cat || "情报", ""];
+    const [label, cls] = map[cat] || [cat || "情报",""];
     return '<span class="badge-cat ' + cls + '">' + label + "</span>";
   }
-  function render(items) {
-    const box = $("intel-list");
-    box.innerHTML = "";
-    $("intel-count").textContent = items.length ? "（" + items.length + " 条）" : "";
-    $("intel-empty").hidden = items.length > 0;
-    items.forEach((it) => {
-      const el = document.createElement("article");
-      el.className = "intel-item";
-      const links = (it.source_urls && it.source_urls.length ? it.source_urls : [it.source_url])
-        .filter(Boolean)
-        .map((u) => '<a href="' + u + '" target="_blank" rel="noopener noreferrer">打开来源</a>')
-        .join("");
-      const route = (it.origin_airport || "全国/未知") + " → " + (it.destination_airport || "多目的地/未知");
-      const merged = it.is_merged ? " · 合并" + it.source_count + "来源" : "";
-      el.innerHTML =
-        "<h3>" + catBadge(it.category) + " " + (it.title || "") + "</h3>" +
-        '<div class="intel-meta">' +
-        "<span>" + route + "</span>" +
-        (it.city_match_level ? "<span>城市匹配:" + it.city_match_level + "</span>" : "") +
-        (it.airline ? "<span>航司:" + it.airline + "</span>" : "") +
-        (it.reported_total ? "<span>报道价 " + it.reported_total + (it.currency || "") + "</span>" : "") +
-        "<span>" + (it.published_at || it.found_at || "") + "</span>" +
-        "<span>" + (it.is_live_bookable_price === false ? "非实时可买" : "") + merged + "</span>" +
-        (it.signal_status && it.signal_status !== "parsed" && it.signal_status !== "discovered"
-          ? "<span>状态:" + it.signal_status + "</span>" : "") +
-        "</div>" +
-        '<p style="margin:6px 0;font-size:14px">' + (it.summary_zh || "") + "</p>" +
-        '<div class="intel-links">' + links +
-        (it.signal_id
-          ? ' <button type="button" class="btn fb" data-id="' + it.signal_id + '" data-fb="bookmarked">收藏</button>' +
-            ' <button type="button" class="btn fb" data-id="' + it.signal_id + '" data-fb="read">已读</button>' +
-            ' <button type="button" class="btn fb" data-id="' + it.signal_id + '" data-fb="not_interested">不感兴趣</button>'
-          : "") +
-        "</div>";
-      box.appendChild(el);
-    });
+
+  function card(it) {
+    const el = document.createElement("article");
+    el.className = "intel-item";
+    const links = (it.source_urls && it.source_urls.length ? it.source_urls : [it.source_url])
+      .filter(Boolean)
+      .map((u) => '<a href="' + u + '" target="_blank" rel="noopener noreferrer">原文</a>').join(" ");
+    const route = (it.origin_airport || "多城/未知") + " → " + (it.destination_airport || "多目的地");
+    el.innerHTML =
+      "<h3>" + catBadge(it.category, it.is_error_fare) + " " + (it.title || "") + "</h3>" +
+      '<div class="intel-meta">' +
+      "<span>" + route + "</span>" +
+      (it.city_match_level ? "<span>适用性:" + it.city_match_level + "</span>" : "") +
+      (it.airline ? "<span>" + it.airline + "</span>" : "") +
+      (it.reported_total ? "<span>报道价 " + it.reported_total + (it.currency || "") + "</span>" : "") +
+      "<span>" + (it.published_at || it.found_at || "") + "</span>" +
+      "<span>" + (it.is_error_fare ? "风险:自担" : "非实时可买") + "</span>" +
+      (it.signal_id ? ' <button type="button" class="btn fb" data-id="' + it.signal_id + '" data-fb="bookmarked">收藏</button>' : "") +
+      "</div>" +
+      '<p style="margin:6px 0;font-size:13px">' + (it.summary_zh || "") + "</p>" +
+      '<div class="intel-links">' + links + "</div>";
+    return el;
   }
-  async function load(pref) {
-    $("origin-status").textContent = "加载中…";
-    try {
-      const qs = buildQuery(pref);
-      const r = await fetch("/api/v1/fare/intel?" + qs, { credentials: "same-origin" });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const data = await r.json();
-      render((data.data && data.data.items) || []);
-      $("origin-status").textContent = "已更新 · 模式=" + ((data.data && data.data.mode) || "intel");
-    } catch (e) {
-      $("origin-status").textContent = "加载失败：" + e.message;
+
+  function render(data) {
+    const list = $("intel-list");
+    list.innerHTML = "";
+    const items = (data && data.items) || [];
+    const folded = (data && data.folded) || [];
+    $("intel-count").textContent = items.length ? "（" + items.length + "）" : "";
+    $("intel-empty").hidden = items.length > 0;
+    items.forEach((it) => list.appendChild(card(it)));
+    const wrap = $("folded-wrap");
+    const fl = $("folded-list");
+    if (folded.length && state.channel === "my_origin") {
+      wrap.hidden = false;
+      fl.innerHTML = "";
+      folded.forEach((it) => fl.appendChild(card(it)));
+    } else {
+      wrap.hidden = true;
+      fl.innerHTML = "";
     }
   }
-  function saveAndLoad() {
-    const pref = readUI();
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pref)); } catch (e) {}
-    load(pref);
+
+  async function load() {
+    readUI();
+    save();
+    const ch = state.channel;
+    $("ch-label").textContent = ({
+      my_origin: "仅明确匹配你的机场",
+      china_mainland: "中国内地出发",
+      hk_mo: "HKG / MFM",
+      global_error: "全球 Bug Fare / Fuel Dump",
+    })[ch] || ch;
+    $("origin-panel").hidden = ch === "global_error";
+    const q = new URLSearchParams();
+    q.set("channel", ch);
+    q.set("limit", "40");
+    if (ch !== "global_error") {
+      if (state.codes && state.codes.length) q.set("origins", state.codes.join(","));
+      if (state.nationwide) q.set("mode", "china_all");
+      if (state.hkg) q.set("include_hkg", "1");
+      if (state.mfm) q.set("include_mfm", "1");
+    } else if (state.codes && state.codes.length) {
+      q.set("origins", state.codes.join(","));
+    }
+    q.set("hide_expired", state.hide_expired ? "1" : "0");
+    $("origin-status").textContent = "加载中…";
+    try {
+      const r = await fetch("/api/v1/fare/intel?" + q.toString(), { credentials: "same-origin" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      render(data.data);
+      $("origin-status").textContent = "已更新 · channel=" + (data.data && data.data.channel);
+    } catch (e) {
+      $("origin-status").textContent = "失败：" + e.message;
+    }
   }
+
+  document.querySelectorAll(".tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.channel = btn.getAttribute("data-ch");
+      load();
+    });
+  });
+  // init active tab
+  document.querySelectorAll(".tab").forEach((b) => {
+    if (b.getAttribute("data-ch") === state.channel) {
+      document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+    }
+  });
+  $("btn-apply").addEventListener("click", load);
+  $("btn-reset").addEventListener("click", () => {
+    state.codes = ["CKG","TFU","CTU"];
+    state.nationwide = false; state.hkg = false; state.mfm = false;
+    renderChips();
+    load();
+  });
   document.getElementById("intel-list").addEventListener("click", async (e) => {
     const btn = e.target.closest("button.fb");
     if (!btn) return;
-    const id = btn.getAttribute("data-id");
-    const fb = btn.getAttribute("data-fb");
     try {
-      const r = await fetch("/api/v1/fare/intel/" + id + "/feedback?feedback=" + encodeURIComponent(fb), {
-        method: "POST",
-        credentials: "same-origin",
-      });
-      if (r.ok) {
-        btn.textContent = "✓ " + btn.textContent.replace("✓ ", "");
-        btn.disabled = true;
-      }
+      const r = await fetch("/api/v1/fare/intel/" + btn.getAttribute("data-id") +
+        "/feedback?feedback=" + encodeURIComponent(btn.getAttribute("data-fb")),
+        { method: "POST", credentials: "same-origin" });
+      if (r.ok) { btn.textContent = "✓"; btn.disabled = true; }
     } catch (err) {}
   });
-  $("btn-apply").addEventListener("click", saveAndLoad);
-  $("btn-reset").addEventListener("click", () => { applyUI(DEFAULT); saveAndLoad(); });
-  $("btn-clear").addEventListener("click", () => {
-    applyUI({ codes: [], nationwide: false, hkg: false, mfm: false });
-    saveAndLoad();
-  });
-  // init from localStorage or default
-  let pref = DEFAULT;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) pref = Object.assign({}, DEFAULT, JSON.parse(raw));
-  } catch (e) {}
-  applyUI(pref);
-  load(pref);
+
+  renderChips();
+  load();
 })();
 </script>
 {% endblock %}

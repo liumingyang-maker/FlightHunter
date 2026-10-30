@@ -335,24 +335,34 @@ def scan_watch(watch_id: str, db: DbDep):
 @router.get("/fare/intel")
 def fare_intel(
     db: DbDep,
-    limit: int = Query(30, le=100),
+    limit: int = Query(40, le=100),
     origins: str | None = Query(None, description="comma IATA like CKG,TFU"),
     mode: str = Query("specific", description="specific|china_all|all"),
     include_hkg: bool = False,
     include_mfm: bool = False,
     hide_expired: bool = True,
+    channel: str = Query(
+        "my_origin",
+        description="my_origin|china_mainland|hk_mo|global_error",
+    ),
 ):
-    """P1 international fare intel (no live quote provider required)."""
+    """P1 四频道情报（统一库；无实时报价依赖）。"""
     from app.services.airports.china import expand_origin_selection
+    from app.services.fare.channels import filter_for_channel
     from app.services.fare.intel import IntelFilter, build_intel_view
 
     codes = [x.strip().upper() for x in (origins or "").split(",") if x.strip()]
-    if mode == "china_all":
-        prefs = expand_origin_selection(china_mainland_all=True)
-    elif mode == "all":
-        prefs = expand_origin_selection(
-            multi=codes, china_mainland_all=True, include_hkg=True, include_mfm=True
+    # 频道视图：港澳/全球错价不强制绑定用户偏好机场过滤结果
+    if channel == "global_error":
+        prefs = (
+            expand_origin_selection(multi=codes, include_hkg=True, include_mfm=True)
+            if codes
+            else []
         )
+    elif channel == "hk_mo":
+        prefs = expand_origin_selection(multi=codes, include_hkg=True, include_mfm=True)
+    elif mode == "china_all" or channel == "china_mainland":
+        prefs = expand_origin_selection(china_mainland_all=True, multi=codes)
     else:
         prefs = expand_origin_selection(
             multi=codes or ["CKG", "TFU", "CTU"],
@@ -361,20 +371,33 @@ def fare_intel(
         )
     filt = IntelFilter(
         preferred_origins=prefs,
-        include_hkg=include_hkg,
-        include_mfm=include_mfm,
+        include_hkg=include_hkg or channel == "hk_mo",
+        include_mfm=include_mfm or channel == "hk_mo",
         hide_expired=hide_expired,
+        exclude_domestic=channel != "global_error",
     )
-    rows = build_intel_view(db, filt, limit=limit)
+    # 全球错价：不过滤城市匹配
+    rows = build_intel_view(db, filt, limit=max(limit, 60))
+    routed = filter_for_channel(
+        rows,
+        channel,
+        prefs,
+    )
+    primary = routed["primary"][:limit]
+    folded = routed["folded"][:20]
     return _ok(
         {
+            "channel": channel,
             "origins": prefs if mode != "china_all" else ["(china_mainland_all)", *codes],
             "mode_flag": mode,
-            "include_hkg": include_hkg,
-            "include_mfm": include_mfm,
-            "count": len(rows),
-            "items": rows,
+            "include_hkg": include_hkg or channel == "hk_mo",
+            "include_mfm": include_mfm or channel == "hk_mo",
+            "primary_count": len(primary),
+            "folded_count": len(folded),
+            "items": primary,
+            "folded": folded,
             "mode": "intel_no_live_quote",
+            "same_signal_id_across_channels": True,
         }
     )
 
