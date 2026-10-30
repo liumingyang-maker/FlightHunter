@@ -1,257 +1,255 @@
-# FlightHunter 独立审计与集中整改建议
+# FlightHunter B1–B8 独立复验
 
-审计日期：2026-10-30。GitHub `develop` 远端和本地 HEAD 在审计时均为 **`ac0c447fc33db1c011f1d443560f495f5ac4298e`**。GitHub 网页读取被工具限制，实际通过已配置 Git 远端的 `ls-remote` 与本地匹配提交读取；`git diff --stat 15c123c HEAD -- app tests` 为空，因此上轮对 `15c123c` 相同业务代码的隔离复验可作为补充证据，不能当作本轮重新操作私有环境。
+审计日期：2026-10-30。GitHub `develop` 远端及本地 HEAD 在核对时均为 `32544e4779bf0ee4afea16e755a5d1ae939f79bc`。该报告覆盖用户声明的集中整改，不代表对所有源码、104 项需求或公网安全做了全量测试。
 
-## 结论与产品定位
+## 结论
 
-这是一个**本地优先的个人旅行机会助手**，不是公共 SaaS 或自动购票系统。V1 不要求实时报价供应商，但要求发现真实情报、保留链接、准确区分已知/未知和证据。项目已有真实来源、四频道、抽奖、行程福利、鉴权、Worker 和测试基础；在这些已有能力之上修复，不建议重写。
+**B1、B2、B3、B5、B6、B7 未通过；B4、B8 部分通过。** 这不否定本轮改善：原未确认扫描门槛、部分出发地、立省与 20KG 负例、缺档案资格、全球频道、真实 FlyNext 错价样本均有改进。但仍能复现安全、数据准确性和业务闭环缺陷，不应按整包关单。
 
-| 问题 | 结论 | 理由 |
+| 决策问题 | YES / NO | 依据 |
 |---|---|---|
-| 是否可作为安全可靠的个人每日工具？ | **NO** | 正式入口与 OCR 访问存在内网重定向风险；真实多目的地票价错配；行程设置存在停扫回归。开发者可在隔离条件下继续测试，但不能当成可靠结果。 |
-| 满足完整 V1.0？ | **NO** | P1 数据语义、P2 证据与内地出境推荐、P3 生命周期，以及需求清单和真实运行证据尚未完整闭环。不是因为没有实时报价 API。 |
-| 面向公众的技术/安全上线准备？ | **NO** | 当前是本地单用户产品，公网部署、访问隔离、完整安全验收未做；这不是法律结论，也不建议为本轮额外扩大公网产品范围。 |
+| 作为安全可靠的个人日常工具？ | **NO** | 安全抓取在拒绝内网重定向前可先访问目标 robots；实际业务仍可能串价、误推荐和重复提醒。 |
+| 满足完整 V1.0？ | **NO** | 四频道过滤、抽奖核心推荐、来源状态和通知等尚未闭环；104 项、真实长跑和私库未验收。实时票价 API 非必要条件。 |
+| 中国大陆公网发布技术安全准备？ | **NO** | 尚未完成公网部署安全验收，项目目前为本地优先；此项不是法律意见。 |
 
-## 独立证据与限制
+## 复验范围和证据
 
-- 本次独立重跑单元测试：**228 passed，1 warning，11.70 秒**；测试结果不是 104 项验收。用内存 SQLite、合成输入和 HTTP/通知替身验证边界，未对真实内网发包、未触发真实 toast、未提交任何外站表单。
-- 本次按应用的抓取适配器和 robots 策略只读 FlyNext 首页：HTTP 200、解析 4 条，隔离库的港澳视图显示 3 条。HK Express 文章有台湾约 HK$800、大阪约 HK$1,500；视图却输出 HKG→KIX、HKD 800。原文：[FlyNext 活动](https://flynext.hk/blog/hk-express-13-anniversary-ultra-offer-2026)。这是报道估算，不代表当前可买。
-- 上轮对相同代码做过 Edge 隔离浏览器测试：恶意标题、摘要未执行，危险协议链接被过滤；全球频道请求未附默认偏好机场。该测试使用模拟 API 数据，不代表正式数据库到页面的完整攻击链，也不是全站 XSS 验收。
-- 不读取或使用 `data/` 私有数据库、`auth.json`、Cookies 或真实个人档案。各历史运行/来源报告是当时记录，不视为本次实时数据；72 小时连续、真实通知、断网恢复和线上部署未独立验证。审核覆盖了 `app/` 的相关关键路径及应用地图，**不是每个文件逐行安全审计**。
+- 独立 `pytest tests/unit -q -p no:cacheprovider`：**248 passed，11 warnings，17.62 秒**。其中多条是 PowerShell 子进程 readerthread 的 GBK `UnicodeDecodeError`，不能省略警告。测试数量不等于 104 项完成。
+- 所有网络安全和通知反例使用 `httpx.MockTransport`、内存 SQLite 与替身通知；模拟出现的 `127.0.0.1` 是拦截的请求记录，**没有访问真实内网**。模拟进程重启通过清空进程内状态，不等于真实桌面 toast 已测试。
+- 本次使用遵守项目 robots 的抓取适配器只读 FlyNext 首页：HTTP 200，解析 4 条；隔离业务链港澳显示 3 条。此前错误的 HK Express 大阪 HKD 800 已变为价格未知，属于有证据的改善；其他合成多目的地标题仍会串价。
+- 临时 SQLite 验证旧版本检查，不触碰正式数据库。未独立运行仓库迁移脚本或对真实旧库做迁移/回滚；未读私有数据库、授权凭据或 Worker 状态。72h、真实 toast、104 项全量与公网测试均为 NOT_TESTED。
 
-## 原 12 项整改的独立复验
+## 八包复验结果
 
-| 原编号 | 结果 | 说明 |
+| 包 | 状态 | 主要证据 |
 |---|---|---|
-| D-001 | PASS（原门槛） | 未确认编辑不再被调度；另有已确认行程停扫回归 N-007。 |
-| D-002 | PASS（所测情报页输入） | 隔离浏览器注入样本未执行；完整攻击链/全站仍未测。 |
-| D-003 | FAIL | 上海→香港仍可误命中 HKG 偏好；品牌假设也会误判。 |
-| D-004 | PASS | 上轮浏览器观察全球频道请求无默认机场。 |
-| D-005 | FAIL | 原最多減样例改善，立省 HK$800 仍会被视为票价；真实多路线错配。 |
-| D-006 | PASS | 20KG 不再解析为 20000。 |
-| D-007 | FAIL | 页面能区分发现与发布，但旅行日期可被错误写入 published_at；真实发布日期也有漏解析。 |
-| D-008 | PARTIAL | 标题归一改善，改写转载仍可能分裂；保守部分采纳避免误合并是合理取舍。 |
-| D-009 | FAIL | 短消息重复外送已改善；长消息标记被截断导致重复，失败也不能重试。 |
-| D-010 | PASS（新候选） | 合成未知出发地候选不进核心；历史私库旧记录未复验。 |
-| D-011 | PASS（原 HTTP200/空解析） | 模拟 HTTP200/0 parsed 返回 ok_zero；另有有解析但零新增被误报问题 N-011。 |
-| D-012 | PASS（原真实样本） | 国泰×渣打样本目的地为未知，不再 HKG→HKG。 |
+| B1 安全 HTTP 和 pwsh | FAIL | MockTransport: public.example → 127.0.0.1，在拒绝最终 URL 前请求了 127.0.0.1:9911/robots.txt；robots 403 时仍请求目标并返回 200；max_bytes=100 的模拟流读取 400 字节后才拒绝。两层验证未阻断 robots 先行请求；DNS 未绑定连接；外网重定向及策略有风险。 |
+| B2 航线、金额和时间 | FAIL | 真实 FlyNext 4 条；HK Express HKG→KIX 价格已为 None；合成 香港出发 台湾 HK$800 · 大阪 HK$1500→HKG/KIX/800 HKD；大阪 MOP$1500→HKD 1500；无明确标签的 2025年1月2日被解析为发布日期。真实样本改善，但多目的地合成反例和币种/日期仍失败。 |
+| B3 四频道筛选与反馈 | FAIL | 真实输出 signal_status=bookmarked，feedback=bookmarked 筛选 0；香港→上海 HKG/PVG 被国内过滤；目的地香港可因香港航空标题误匹配 KIX。新增控件不能等于筛选闭环；出行时间与发布/发现时间不同。 |
+| B4 确认与行程状态 | PARTIAL | 内存 SQLite 未确认编辑无到期订阅；旧 trip_not_confirmed 订阅确认后恢复；已确认编辑且关闭重扫后仍启用；auto_attach_fare_watch_to_new_trip=False，确认后 fare_monitor 仍启用。原问题改善，配置边界尚有回归。 |
+| B5 抽奖资格与证据 | FAIL | 合成官方候选「中国内地国内航班免费机票抽奖」和「不包括中国大陆出发的国际免费机票抽奖」均 core_recommend=true；缺国籍或居住时 synthetic eligibility=unknown。资格负例通过；官方来源及关键词不等于官方证明内地出境适用。 |
+| B6 来源与通知 | FAIL | 相同通知发送后清空进程状态再发送→两次替身 toast；失败连续调用 5 次→5 次替身 toast，超过 3 次限制；来源第二次 parsed=1 返回 ok_existing，但 Source.last_result=ok_zero。不触发真实 toast；跨站改写合并本轮未重新验证。 |
+| B7 迁移检查与隔离演练 | FAIL | 临时隔离 SQLite alembic_version=0001_initial；head=0004_source_health，check 报 ok=true、ensure action=ok；rg 检索实际 app 中 ensure_migrations_or_warn 无调用，Web 使用 init_db。只测试版本检查，不触碰私库；未独立重跑迁移脚本。 |
+| B8 测试与统一验收 | PARTIAL | pytest tests/unit: 248 passed, 11 warnings in 17.62s；多个新增测试用 inspect/hasattr 或断言结果集合，未执行完整业务链。本轮抽样和隔离测试不等同 104 项验收；完整 72h、真实 toast/私库 NOT_TESTED。 |
 
-以上 **7 PASS / 4 FAIL / 1 PARTIAL** 仅针对原缺陷的验收范围，不代表相关模块或完整产品 PASS。
+## 已确认的问题与修复方向
 
-## 当前问题清单
+下面的 P1/P2 是按现有本地产品风险评估；每项均可复现或标明测试范围，不代表在真实目标上已发生攻击。
 
-严重性按对本地个人产品的风险与业务影响评估；模拟结果和代码审查分别标注，未把未完成的公网测试描述为已利用。缺陷含位置、证据、影响及可执行建议：
+### R-001 · P1 · 重定向目标验证之前先抓取 robots
 
-### N-001 · P1 · 入口探测和图片 OCR 的重定向可到达内网
+位置：`app/core/safe_http.py:72`。
 
-- 位置：`app/services/raffle/auto_verify.py:99; app/services/raffle/evidence_extract.py:226; app/cli.py:727; app/services/discovery/service.py:110; app/services/fare/intel.py:700`
-- 证据：httpx MockTransport 中 public.example 302→127.0.0.1，入口探测与 OCR 两条路径均跟随，入口返回 ok；无真实内网访问。初始 hostname 校验默认不解析 DNS，且 follow_redirects=True。
-- 影响：受控外部页面或重定向可诱导服务访问本机或内网；其他直连路径需分别核查。
-- 建议：统一安全 HTTP 客户端：每跳 URL/DNS/站点策略校验，禁止非公网，限制大小与跳转；防 DNS 重绑定要将校验结果与连接绑定并保留 TLS 主机验证，避免只在请求前解析一次。
+复现：MockTransport 从 https://public.example/start 返回 Location=http://127.0.0.1:9911/private；调用记录出现 http://127.0.0.1:9911/robots.txt，随后才报 unsafe_redirect。
 
-### N-002 · P1 · 多个读取路径绕过统一 robots 安全策略
+影响：非公网 URL 在最终拦截前已收到请求；本次没有访问真实内网。
 
-- 位置：`app/services/raffle/auto_verify.py:120; app/services/discovery/service.py:110; app/services/raffle/evidence_extract.py:230`
-- 证据：入口 probe、AJAX 列表、OCR 图片直接使用 httpx，未调用 HttpxFetchAdapter 的 robots 路径；代码审查。
-- 影响：来源主页面允许不等于其子路径、图片或重定向目标允许，可能违反项目自动化边界。
-- 建议：所有自动抓取复用同一合规客户端；每站 403/429/CAPTCHA/robots 按状态停抓，不得绕过。
+建议：每次跳转先验证 scheme、host、DNS，再访问该目标 robots/正文；robots 请求自身也使用同一安全连接策略。
 
-### N-003 · P1 · 目的地及航司品牌误识别为出发地
+### R-002 · P1 · robots 403/429 或异常时放行目标
 
-- 位置：`app/services/fare/intel.py:292; app/services/fare/channels.py:route_channels`
-- 证据：隔离执行：上海→香港 机票促销→[PVG,HKG]，经 build_intel_view 在 HKG 偏好进入我的出发地主列表；Peach 大阪→首尔→[HKG]。
-- 影响：误导偏好匹配或错归港澳。
-- 建议：优先方向明确的地点和 IATA；目的地与航司名不作为出发证据。品牌只能作来源上下文弱提示，不满足明确匹配；未知归 unknown。
+位置：`app/core/safe_http.py:182`。
 
-### N-004 · P1 · 多目的地价格与航线错误绑定
+复现：MockTransport 返回 robots 403，目标仍被请求并返回 ok=true。
 
-- 位置：`app/adapters/html_fetcher.py:457; app/services/fare/intel.py:380`
-- 证据：2026-10-30 本次 FlyNext 首页只读 200，四信号隔离物化：HK Express 台湾 HK$800、大阪 HK$1500 的文章被视图输出为 HKG→KIX HKD 800。
-- 影响：给消费者错误的大阪报价，不能认为是实时可买价格。
-- 建议：用路线级候选或保留多目的地汇总，只有金额与目的地绑定证据充分才展示路线级价格；不明确则金额/目的地为 unknown 并保留原文。
+影响：违背项目遇到 403/429 及未知策略需停止的边界。
 
-### N-005 · P1 · 减免词绕过导致优惠额冒充票价
+建议：robots 403/429/异常 fail closed；404 等状态按明确项目策略分类；不对站点拒绝进行绕过。
 
-- 位置：`app/adapters/html_fetcher.py:482`
-- 证据：香港大阪機票立省HK$800→reported_total=800 HKD；最多減样例返回 None。
-- 影响：用户把折扣额误认成机票价。
-- 建议：明确区分票价、减免、门槛、积分、行李及税费；未知语义不要写 reported_total，并覆盖简繁中英文变体。
+### R-003 · P2 · 响应上限在完整读取后才检查
 
-### N-006 · P1 · 旅行日期可被写入发布日期
+位置：`app/core/safe_http.py:87`。
 
-- 位置：`app/adapters/html_fetcher.py:215`
-- 证据：合成列表「旅行日期 2027年2月3日」→published_at 2027-02-03；含 HK$1600 和明确發布 2026-10-29 的另一条 published_at=None。
-- 影响：时间排序、过期判断会失真，旧文可能被伪装成近期发布。
-- 建议：只解析有明确发布日期标签/RSS 字段的时间，使用来源时区；分别保存发现、发布、销售、旅行时间及证据，未知不回填。
+复现：max_bytes=100，模拟无 Content-Length 的 4×100 字节流；客户端先消费 400 字节，再返回 response_too_large。
 
-### N-007 · P1 · 已确认行程在关闭编辑重扫后被停用
+影响：大响应可耗尽内存，robots 读取也未流式限量。
 
-- 位置：`app/services/trips/service.py:103; app/services/trips/service.py:221`
-- 证据：隔离内存：confirmed=true 且已有 enabled 订阅，auto_scan_on_trip_change=false 后编辑标签，订阅变 disabled，paused_reason=trip_not_confirmed；历史 disabled 订阅确认后仍不恢复。
-- 影响：真实用户已确认行程可能停止福利监控。
-- 建议：区分未确认与不触发重扫；确认动作幂等恢复符合政策的旧订阅；由调度器二次拦截未确认及 demo。
+建议：使用流式响应按块限制解压后大小和耗时，robots 同样限量；预检仅为补充。
 
-### N-008 · P1 · 社区促销被归为官方促销
+### R-004 · P1 · 多路线金额仍会跨目的地绑定
 
-- 位置：`app/services/fare/intel.py:447; app/web/templates/fare.html:130`
-- 证据：合成 source_type=community、deal_types=[flash_sale]，classify_signal 返回 official_or_flash_promo；界面显示官方/限时促销。
-- 影响：促销性质和来源权威被混淆，降低证据诚实度。
-- 建议：来源可信度与促销类别分字段，社区转述标社区线索，仅直接官方证据才能标官方。
+位置：`app/adapters/html_fetcher.py:424; app/services/fare/intel.py:538`。
 
-### N-009 · P2 · 抽奖资格缺一个关键档案仍返回 eligible
+复现：合成 香港出发 台湾 HK$800 · 大阪 HK$1500 機票優惠，隔离物化视图得到 HKG→KIX 800 HKD。
 
-- 位置：`app/services/raffle/multi_round.py:580; app/cli.py:775`
-- 证据：合成规则同时要求非韩国公民且不住韩国，purchase_required=false、age=30、nationality=CN、residence=None→eligible；反向缺 nationality 同样 eligible。该函数用于合成档案 CLI 路径。
-- 影响：合成验证输出过度断言，可能误导审核；本次未证明真实用户资格 API 走此函数。
-- 建议：每项规则拆开判断，任一必需档案缺失则 unknown；年龄阈值必须来自规则证据，不固定假定 18。
+影响：把台湾票价误导为大阪价。
 
-### N-010 · P2 · 失败外送不重试、长内容可重复外送
+建议：结构化一条价格绑定一个已证实的目的地；有歧义返回多路线无单价或 unknown；全链路断言最终视图。
 
-- 位置：`app/services/notify/delivery.py:67`
-- 证据：替身送达：短内容成功重复调用只外送一次；4000 字正文截断 [delivery] 标记后外送两次；第一次 toast failed 后第二次被跳过。
-- 影响：丢提醒或重复提醒；未触发真实桌面通知。
-- 建议：独立持久化事件键、每渠道送达状态与重试次数；仅成功渠道幂等抑制，失败可限次退避。
+### R-005 · P2 · 澳门币种被解析成港币
 
-### N-011 · P2 · 已解析但无新增被误报为零解析
+位置：`app/adapters/html_fetcher.py:424`。
 
-- 位置：`app/services/discovery/service.py:768`
-- 证据：隔离来源首次 parsed=1/persisted=1/status=ok；重复运行 parsed=1/persisted=0/status=ok_zero。
-- 影响：正常去重的来源被误判为解析空，运营诊断不可靠。
-- 建议：分开 fetch_ok、parsed_count、existing_count、new_count、valuable_count；仅 parsed_count=0 表示 zero_parse。
+复现：大阪 MOP$1500 機票優惠→reported_total=1500 currency=HKD。
 
-### N-012 · P2 · 非 demo 活动被标为真实
+影响：错误币种影响价格判断。
 
-- 位置：`app/web/templates/campaigns.html:24; app/web/routes/pages.py:175`
-- 证据：模板仅按 demo_only 显示 fixture 或真实；candidate、无官方证据的非 demo 数据同样显示真实。
-- 影响：把线索存在与活动已核实混为一谈。
-- 建议：数据来源与验证状态分别展示；candidate 标待核实，不以非 demo 推断真实。
+建议：金额解析携带真实币种，MOP→MOP、HK$→HKD、¥ 按明确语境或保留未知。
 
-### N-013 · P2 · 自动核验成功数被称为 verified
+### R-006 · P1 · 发布日期提取仍使用无标签日期
 
-- 位置：`app/services/discovery/service.py:887; app/scheduler/jobs.py:269; app/services/raffle/auto_verify.py:410`
-- 证据：代码以 auto_verify 返回 ok 数统计 verified/auto_verified，而返回 note 明示 not verified；未证明真实 round.verify_status 被改为 verified。
-- 影响：监控数字容易被误读为官方核实或资格通过。
-- 建议：使用 auto_extracted_count 等明确名称；verified 仅统计正式核实状态，展示核验失败和人工复核数。
+位置：`app/adapters/html_fetcher.py:382`。
 
-### N-014 · P2 · 跨站转载无可靠事件级合并
+复现：机票活动 2025年1月2日 机票优惠→published_at=2025-01-02；更新日期也写 published_at；真实 FlyNext Peach 明示 2026-10-29 但字段 None。
 
-- 位置：`app/services/fare/intel.py:88; app/services/discovery/service.py:251`
-- 证据：上一轮相同代码隔离测试：两站同标题合并，第三站改写同一活动后仍为两个组；物化 key 包含来源 ID。
-- 影响：重复展示且通知缺少统一事件依据。
-- 建议：先提供保守候选合并和人工确认、保留全部原始来源及不合并歧义；避免仅凭相同航线价格强制全自动合并。
+影响：活动/更新日期可伪装发布时间，真实发布时间遗漏。
 
-### N-015 · P2 · 正式 toast 调用 Windows PowerShell 5.1
+建议：只有明确发布证据才写 published_at，updated_at 独立；适配 發佈日期· 等真实格式，并覆盖通用和回退两条解析路径。
 
-- 位置：`app/services/notify/delivery.py:33`
-- 证据：替身 subprocess 检测 argv[0]=powershell；项目 AGENTS 明确要求 pwsh。
-- 影响：违反项目 Windows 执行规则，可能引入编码或行为差异。
-- 建议：使用明确 pwsh.exe 路径及安全参数传递；测试保留中文、引号并禁止拼接可执行脚本。
+### R-007 · P1 · 收藏筛选字段不一致
 
-### N-016 · P2 · 抽奖核心推荐没有正向识别路径
+位置：`app/web/routes/api.py:453; app/services/fare/intel.py:662`。
 
-- 位置：`app/services/discovery/service.py:453; app/services/raffle/auto_verify.py:380; app/web/routes/pages.py:175`
-- 证据：当前 materialize 将 core_recommend 固定为 false；代码搜索未发现将已核实中国出境设置为 true 的路径；页面只展示简单活动列表。
-- 影响：修复误推荐的同时，尚不能产出有证据的中国出境核心推荐。
-- 建议：增加独立证据驱动的适用性三态和核心推荐筛选，未知继续待核实；无官方资料不得硬推。
+复现：隔离视图信号 signal_status=bookmarked，行数据没有 user_feedback，feedback=bookmarked 筛选 0 条。
 
-### N-017 · P2 · 建表不等于已有数据库结构迁移
+影响：已收藏情报无法按 UI 筛选。
 
-- 位置：`app/db/session.py:45; app/web/app.py:29; app/alembic/versions`
-- 证据：Web 启动 init_db 使用 metadata.create_all，旧 official_url 情况只 pass；升级需独立 Alembic 命令。
-- 影响：旧库启动可能缺新增字段或与当前模型不一致；本次未访问或迁移私有 DB。
-- 建议：启动前检查迁移版本并给出清晰阻断/升级指导；先对隔离副本做备份、升级与回滚演练，正式库操作须用户授权。
+建议：从同一事实字段构造反馈模型，统一写入、读取和 UI 选项；测试实际 API 与按钮。
 
-### N-018 · P2 · UI 缺少完整情报筛选和反馈闭环
+### R-008 · P1 · 港澳到内地跨境航线被过滤
 
-- 位置：`app/web/templates/fare.html; app/web/routes/api.py:339`
-- 证据：产品基线要求目的地、类别、出行时间、过期过滤；现页面有出发地和过期控件，情报 API 不提供完整对应过滤；页面主要提供收藏。
-- 影响：用户难以快速缩小到可用的个人行程，反馈能力与实际界面不一致。
-- 建议：先建立结构化且可缺失的字段，再补目的地、类别、时间和反馈控件；未知项不能被误作已匹配。
+位置：`app/services/fare/intel.py:565`。
 
-## 建议一次集中实施的整改包
+复现：内存数据 HKG→PVG、exclude_domestic=true，经港澳偏好视图输出 0；目的地 PVG 被无条件判为国内。
 
-以下是**同一轮的完整工作范围**，包内顺序仅表示依赖和优先级；不需要每修一项就发来验收。保持现有技术栈、来源与安全边界；不要自动重置 72 小时观测，不要操作用户正式库。对于迁移、通知、来源等风险改动，先使用隔离库和模拟传输验证。每个包的验收条件应和真实证据一起交付。
+影响：符合内地出入境要求的跨境机会被漏掉。
 
-### B1 · P1 · 统一外部访问和本地安全边界
+建议：以起点与终点组合判断跨境，纯内地对才排除；测试 HKG↔PVG、内地↔内地。
 
-覆盖：N-001, N-002, N-015。
+### R-009 · P2 · 目的地及时间筛选存在语义错配
 
-实施：梳理 HTML/RSS、入口、OCR、AJAX、链接质量检查及浏览器子资源，统一允许的请求策略；每个重定向及 DNS 均执行公网检查，禁止访问本机和私网；连接层防重绑定并保留 TLS 验证；遵守 robots、限流和响应大小。Windows toast 使用 pwsh，参数与脚本分离。
+位置：`app/web/routes/api.py:440`。
 
-验收：MockTransport 验证初始私网、公开跳私网、私网 DNS、重绑定、跨域 robots、403/429、过大响应全部拒绝；公网静态安全样本可访问；不访问真实内网。
+复现：目的地=香港匹配标题「香港航空 上海→大阪」即使 destination=KIX；date_from 使用 published_at 或 found_at，不是出行日期。
 
-### B2 · P1 · 统一机票语义与可信显示
+影响：错误匹配目的地，用户无法按出行日期筛选。
 
-覆盖：N-003, N-004, N-005, N-006, N-008。
+建议：以结构化目的地与别名匹配，未知单列；发布、发现、出行日期分别提供明确筛选。
 
-实施：把来源角色、实际出发地、目的地、航司、价格类型、币种、发布/发现/旅行/销售时间分离并保留证据；对多目的地价格只展示被证据绑定的路线与金额；不确定值保留 unknown；杜绝品牌自动等于出发地。
+### R-010 · P1 · 抽奖核心推荐只凭来源类型与关键词
 
-验收：上海→香港、香港航空上海、Peach 大阪→首尔、真实 HK Express 多线路、立省 HK$800、20KG、旅行日期与发布日期、未知时间等全部通过；真实 FlyNext 样本前后对照，报道价仍标非实时。
+位置：`app/services/discovery/service.py:456`。
 
-### B3 · P1 · 四频道与消费者筛选闭环
+复现：合成官方候选「中国内地国内航班免费机票抽奖」和「不包括中国大陆出发的国际免费机票抽奖」均标 confirmed_mainland_outbound、core_recommend=true，verify_status=candidate。
 
-覆盖：N-003, N-018。
+影响：将国内航段或明确排除内地出发的活动误报为已确认核心推荐。
 
-实施：频道先按统一候选集与明确地域分流；全球不默认偏好过滤；全国不并入港澳；我的出发地只接受明确机场，未知折叠。补目的地、类别、时间范围、反馈与来源链接，保持小屏可用。
+建议：证据驱动独立核验奖品、方向、排除条件和来源，必要时 unknown；未经确认不得标 confirmed/core。
 
-验收：同一 signal 可多频道但事件通知唯一；端到端 API 与浏览器测各频道、全国/HKG/MFM、偏好变更、未知及过期过滤；误命中率和漏报率基于标注样本公开统计。
+### R-011 · P1 · 异步抽奖发现中使用 asyncio.run
 
-### B4 · P1 · P3 行程状态机与恢复
+位置：`app/services/discovery/service.py:104; app/core/safe_http.py:139`。
 
-覆盖：N-007。
+复现：在已有 event loop 中调用 discover_official_tourism_events，内部 safe_get_sync 抛 RuntimeError: asyncio.run() cannot be called from a running event loop；被捕获后 AJAX 0 条。
 
-实施：定义创建、确认、编辑、暂停、取消、完成、恢复的统一状态转换；任意正式执行入口复核 confirmed、demo、archived、completed；关闭改期自动重扫不应禁用已有订阅；旧脏订阅只在隔离副本核查后设计恢复。
+影响：真实异步扫描静默丢失 AJAX 活动候选。
 
-验收：未确认、demo、confirmed、编辑设置开关、历史 disabled 订阅、取消/结束、重启均有端到端测试；未确认永不正式扫描，确认后可正确启用；不改动正式库。
+建议：让发现函数异步并 await safe_get，或确保同步 API 不在事件循环运行；错误分层报告而非吞掉。
 
-### B5 · P1 · P2 官方证据与中国出境
+### R-012 · P1 · 通知成功状态不能跨进程恢复
 
-覆盖：N-009, N-012, N-013, N-016。
+位置：`app/services/notify/delivery.py:113`。
 
-实施：把候选、官方核实、免费、报名期、适用内地出境、真实用户资格、入口、回执拆开表达；每项保留来源和不确定性；只根据官方证据正向识别核心推荐。统计和页面均禁止把非 demo 或自动提取当 verified。
+复现：内存 SQLite 模拟首次 toast 成功；清空 _DELIVERY_STATE 模拟进程重启后同一通知再次调用，console/toast 各执行两次。
 
-验收：国籍/居住缺一分别 unknown，完整冲突 ineligible，无官方规则/出发地 unknown；模拟已证实内地出境方可核心推荐；汽车/现金/国内航段排除；不真实报名。
+影响：重启后重复提醒。
 
-### B6 · P2 · 来源、通知和事件去重
+建议：持久化唯一事件键及每渠道成功状态；重启后加载相同事实，避免依赖内存和正文前缀。
 
-覆盖：N-010, N-011, N-014。
+### R-013 · P1 · 失败重试次数没有上限
 
-实施：来源健康分别记录 fetch、parse、已存在、新增、有效；通知采用事件+渠道的持久状态，成功去重、失败退避；跨站保守候选合并，保留全部 URL，提供可拆分与人工复核。
+位置：`app/services/notify/delivery.py:118`。
 
-验收：已解析零新增不等于零解析；同一事件多源不重复通知，长正文不丢送达状态；失败可重试且成功不重复；相似不同活动不得误合并。
+复现：替身 toast 总是 failed，单进程连续调用 5 次均外送；前缀含 a1，解析数字逻辑却判断 meta[1].isdigit()。
 
-### B7 · P2 · 数据库与日常运行可靠性
+影响：重复打扰且超出三次限制。
 
-覆盖：N-017。
+建议：持久化解析正确的整型 attempts、退避和终止状态，成功后不重试；覆盖同进程与重启。
 
-实施：在隔离库验证迁移版本、备份恢复、旧 schema、单实例、断网恢复及故障状态；保留原 72h 观察起点，持续积累；不因验收重启用户 Worker。
+### R-014 · P1 · 旧版本数据库被错误标记为最新
 
-验收：新库、旧库副本迁移与恢复演练可复现；失败不破坏数据；Web/Worker 同库单实例；72h 使用实际连续证据而非墙钟推断。
+位置：`app/db/session.py:45; app/web/app.py:29`。
 
-### B8 · P1 · 统一验收、交付和后续审计
+复现：临时 SQLite version=0001_initial、head=0004_source_health，check 返回 ok=true、ensure action=ok；app 中未调用 ensure。
 
-覆盖：P1-CHANNELS, P2-HONESTY, P3-GATE, RUNTIME, V1-104。
+影响：旧库可能未迁移就进入运行；本次未操作实际用户库。
 
-实施：一轮完整实现后按需求 ID、负例、来源、界面、安全和运行证据统一出报告；明确 verified/unknown/blocked，附真实日志与可重现的隔离命令，不用 mock、200、测试数冒充真实业务。
+建议：显式比较当前版本与 head，缺版本、过旧、未知 head/读取错误分别阻断或明确告警；在 Web/CLI 启动接线；先隔离副本验证迁移并备份。
 
-验收：104 项逐项有证据或诚实标未测；真实网络受限标 BLOCKED；未修或部分采纳意见有原因；仅最后统一交 Codex 复验，不逐项往返。
+### R-015 · P2 · 已存在内容仍被来源健康标为零解析
 
-## 本轮工程取舍
+位置：`app/services/discovery/service.py:785; app/services/ops/source_health.py`。
 
-1. 保留 FastAPI + SQLite + Worker 和既有抽奖/OCR/行程能力，不为修复数据质量而整体重写。
-2. 不把实时报价 API、额外来源数量或付费模型作为 V1 关门条件；对不允许访问或网络阻断的来源如实标 BLOCKED。
-3. 跨源合并先保守执行并可追溯；无法确定同一事件时保留两条和来源，不为压低重复数误合并。
-4. 不要求这轮完成公网 SaaS、渗透测试或全面 CSP；但本地运行也要修复已经复现的外部访问与私网重定向边界。
-5. 修改需要数据库 schema 时，先准备可审阅的迁移、回滚及隔离副本验证；未经用户授权不碰私库，不重置运行观察。
-6. 本次输出的是审计意见和批量验收标准，不代表要求机械接受每条方案。对重要取舍，在下一轮报告逐条说明采纳、部分采纳或不采纳及证据。
+复现：模拟第二次解析 1 条已存在：返回 status=ok_existing，但 source.last_result=ok_zero，健康统计会计入零解析。
 
-## 本次执行记录
+影响：运营指标与调用结果不一致。
 
-- git status --short --branch; git rev-parse HEAD; git ls-remote origin refs/heads/develop
-- git diff --stat 15c123c HEAD -- app tests
-- PowerShell 7: PYTHONPATH=<project>; PYTHONDONTWRITEBYTECODE=1; .venv/Scripts/python.exe -B -m pytest tests/unit -q -p no:cacheprovider → 228 passed, 1 warning in 11.70s
-- python -B stdin: SQLite :memory: cases, synthetic price/date/origin and eligibility probes, mocked delivery, HTTP MockTransport redirect, 200 parse/repeat accounting
-- python -B stdin: robots-aware HttpxFetchAdapter read-only FlyNext homepage and in-memory fare materialization
-- Prior turn on 15c123c identical app code: Playwright Edge isolated HTML with mocked API XSS/global-channel request; confirmed-trip lifecycle; no real toast or submissions
+建议：分别持久化解析数、新增数、已有数和 last_result；source-health 识别 ok_existing。
 
-结构化需求、18 个缺陷和集中整改包详见同目录 `CODEX_AUDIT_MATRIX.json`。本次没有修改业务源码、没有推送，也没有自动修复；两份审计文件以未跟踪文件形式写入项目根目录。
+### R-016 · P2 · 确认行程忽略关闭机票监控设置
+
+位置：`app/services/trips/service.py:110; app/services/trips/service.py:180`。
+
+复现：Settings.auto_attach_fare_watch_to_new_trip=false，首次 confirm_trip 后 benefit_discovery 和 fare_monitor 均 enabled=true。
+
+影响：用户关闭该功能仍可能被开启。
+
+建议：恢复和注册分别尊重 task_type 的配置、历史暂停原因及全局设置；覆盖首确认、重复确认、取消和历史订阅。
+
+### R-017 · P2 · PowerShell 子进程输出解码异常
+
+位置：`app/services/notify/delivery.py:51`。
+
+复现：248 单元通过但出现多条 PytestUnhandledThreadExceptionWarning：subprocess readerthread UnicodeDecodeError gbk，输出共 11 warnings。
+
+影响：通知错误输出可能丢失或被误判，测试噪声掩盖实际故障。
+
+建议：明确 subprocess 输出编码及错误处理，隔离测试替换真实 toast；覆盖中文和异常流。
+
+## 下一轮集中整改建议
+
+建议把下列工作作为一批完成，最后统一提交独立复验；不需要每修一项就来回交接。保持现有产品定位、不引入未授权来源、不绕过 robots/CAPTCHA、不自动报名或支付，不重置 72h 观察。涉及数据库结构的工作先做可审阅迁移与隔离验证，正式库操作由用户授权。
+
+### Q1 · 覆盖 R-001, R-002, R-003, R-011
+
+实施：统一安全抓取及异步调用。先验证每跳再 robots；对 403/429/失败停止；连接使用经验证 IP 且保留 HTTPS 主机/TLS 验证，robots 和正文流式限量；异步入口只 await。
+
+验收：模拟公开跳私网时包括 robots 在内无私网请求；DNS 重绑定、重定向环、超大无长度、robots 403/429/异常均 fail closed；合法公开内容及异步 AJAX 可用。
+
+### Q2 · 覆盖 R-004, R-005, R-006, R-007, R-008, R-009
+
+实施：以原文证据绑定路线和金额，明确币种及日期含义，建立对应筛选和反馈字段；修复跨境航线过滤。
+
+验收：真实 FlyNext 及合成台湾800/大阪1500最终界面不串价；MOP/HKD、未知/更新/发表时间、HKG↔PVG、收藏筛选、航司名不作目的地均端到端验证。
+
+### Q3 · 覆盖 R-010, R-016
+
+实施：抽奖适用性保留证据、否定和三态；行程订阅状态遵守全局和任务级设置。
+
+验收：国内航段、明确不包含中国大陆均不核心；仅官方可核实的内地出境正例进入核心；缺国籍/居住 unknown；关闭 fare_monitor 时确认、重确认与恢复不启用。
+
+### Q4 · 覆盖 R-012, R-013, R-015, R-017
+
+实施：事件和渠道状态采用独立、持久、可查询记录；修复重试与状态统计，安全处理 pwsh 文本编码。
+
+验收：模拟成功后进程重启不重复；失败三次后终止，恢复条件明确；长正文不损状态；ok_existing 不计零解析；中文错误输出不触发解码异常。
+
+### Q5 · 覆盖 R-014, B8
+
+实施：将迁移检查接入所有启动入口，按实际版本判定；补真正旧 schema 的隔离备份与升级演练，不操作正式库。
+
+验收：新库、无版本旧库、落后版本、未知版本、迁移异常、升级后恢复都有结果；单元与端到端使用业务数据断言，最后一次性独立复验。
+
+跨站转载合并仍按保守、可追溯策略处理，无法确认同一事件时不强行合并；真实来源、104 项逐条验收与 72h 持续证据继续如实标记，不用 mock 或 HTTP 200 冒充业务成功。
+
+## 执行记录
+
+- PowerShell 7: git rev-parse HEAD; git ls-remote origin refs/heads/develop
+- PowerShell 7: .venv/Scripts/python.exe -B -m pytest tests/unit -q -p no:cacheprovider → 248 passed, 11 warnings in 17.62s
+- Python stdin: httpx MockTransport redirects/robots/stream; no real private network request
+- Python stdin: SQLite :memory: fare materialization, feedback, cross-border, trip state, giveaway and mock notifications
+- Python stdin: temporary isolated SQLite 0001_initial vs 0004_source_health migration checker; no private DB
+- Python stdin: HttpxFetchAdapter obeying robots read-only FlyNext homepage; isolated in-memory business pipeline
+- Static review of safe_http, adapters, UI/API, eligibility, notifications, Alembic and tests; independent full migration drill, 72h, 104 items NOT_TESTED
+
+结构化状态、缺陷与集中整改包见 `CODEX_AUDIT_MATRIX.json`。本次只更新这两份审计文件，未更改源码、未迁移私人库、未推送。
