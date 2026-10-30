@@ -365,7 +365,7 @@ def intel_quality_stats(
 
     from app.services.airports.china import expand_origin_selection
 
-    now_n = now or datetime.now(UTC)
+    now_n = now or datetime.now(UTC).replace(tzinfo=None)
     filt = filt or IntelFilter(
         preferred_origins=expand_origin_selection(multi=["CKG", "TFU", "CTU"])
     )
