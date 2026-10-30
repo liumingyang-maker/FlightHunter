@@ -1,5 +1,5 @@
 # FlightHunter first isolated live run
-param([string]$ExpectedHead = "84590f3", [int]$Port = 8765)
+param([string]$ExpectedHead = "20eee26", [int]$Port = 8765)
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Python = Join-Path $Repo ".venv\Scripts\python.exe"
@@ -76,6 +76,7 @@ Start-Process $PwshExe -WorkingDirectory $Snapshot -ArgumentList "-NoExit","-NoP
 Write-Host "Three pwsh windows started: Web / Monitor / Sweep." -ForegroundColor Green
 Write-Host "Web: http://127.0.0.1:$Port/"
 Write-Host "Results: $RunDir\RESULTS.md"
+
 
 
 
