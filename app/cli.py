@@ -632,6 +632,8 @@ def raffle_multi_round_check(
                     if r.open_status == "closed"
                     else "开放状态待核实（日期未知/需登录等），不按已结束处理"
                     if r.open_status == "pending_verification"
+                    else "活动仍开放；用户资格 unknown，不自动报名"
+                    if r.open_status == "open" and el.get("state") != "eligible"
                     else "规则允许且仍开放；仍须人工确认官方页后自愿报名"
                     if r.open_status == "open"
                     else "开放状态未知"

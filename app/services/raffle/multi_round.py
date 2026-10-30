@@ -190,7 +190,8 @@ def parse_multi_round_event_html(
     organizer = "Korea Tourism Organization / VISITKOREA" if "visitkorea" in page_url else None
 
     # --- Case A style: single survey with flight prize ---
-    if re.search(r"enter to win round-trip flights|round-trip flights to Korea", text, re.I):
+    if re.search(r"enter to win round-trip flights|round-trip flights to Korea|K-SPICY", text, re.I):
+        join_visible = bool(re.search(r"Join Now", text))
         r0 = EventRoundRules(
             round_label="survey_roundtrip",
             edition_key="survey_roundtrip",
@@ -201,6 +202,11 @@ def parse_multi_round_event_html(
             entry_channel="survey_quiz",
             free_entry=True,
             purchase_required=False,
+            open_status="pending_verification" if join_visible else "unknown",
+            requires_login_to_enter=True,
+            residency_restriction="open exclusively to non-residents of Korea"
+            if re.search(r"non-residents of Korea", text, re.I)
+            else None,
         )
         m = re.search(
             r"((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[–\-—to]+\s*(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4}\s*[–\-—to]+\s*\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{1,2}-\d{1,2}\s*[–\-—to]+\s*\d{4}-\d{1,2}-\d{1,2})",
@@ -212,6 +218,8 @@ def parse_multi_round_event_html(
         else:
             r0.blocked_notes.append("dates_unparsed")
         r0.active_now = None
+        if r0.open_status == "pending_verification":
+            r0.blocked_notes.append("open_state_pending_verification_not_closed")
         rounds.append(r0)
 
     # --- Explicit Event N / Previous event / Current event / Period N ---

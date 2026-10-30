@@ -57,18 +57,38 @@ def discover_official_tourism_events(
     assert_public_http_url(list_url)
 
     signals: list[ParsedSignal] = []
-    # 1) 从当前 HTML 直接抽 contentsView 链接（美食栏等）
+    # 1) 从当前 HTML 直接抽 contentsView 链接（美食栏等，含 javascript:goLinkPage）
+    link_hits: list[tuple[str, str]] = []
     for m in re.finditer(
-        r'href=["\']([^"\']*contentsView\.do\?[^"\']*vcontsId=\d+[^"\']*)["\']',
+        r'(?:href=["\']|goLinkPage\([^"\']*["\'])((?:https?:)?//[^"\']*contentsView\.do\?[^"\']*vcontsId=\d+[^"\']*|[^"\']*contentsView\.do\?[^"\']*vcontsId=\d+[^"\']*)["\']',
         html,
         re.I,
     ):
-        href = urljoin(page_url, m.group(1))
-        # 尝试取邻近文本作标题
-        idx = html.find(m.group(1))
-        window = html[max(0, idx - 200) : idx + 200]
-        title_m = re.search(r">([^<>]{6,120})<", window)
+        raw = m.group(1).replace("&amp;", "&")
+        link_hits.append((raw, m.start()))
+    # 也匹配 goLinkPage('N','', 'URL', ...)
+    for m in re.finditer(
+        r"goLinkPage\(\s*'[^']*'\s*,\s*'[^']*'\s*,\s*'([^']*contentsView\.do\?[^']+)'\s*,",
+        html,
+        re.I,
+    ):
+        link_hits.append((m.group(1).replace("&amp;", "&"), m.start()))
+    seen_urls: set[str] = set()
+    for raw, pos in link_hits:
+        href = urljoin(page_url, raw)
+        if href in seen_urls:
+            continue
+        seen_urls.add(href)
+        window = html[max(0, pos - 400) : pos + 400]
+        title_m = re.search(
+            r"<(?:strong|title|h[1-4]|p)[^>]*>([^<]{6,160})<",
+            window,
+            re.I,
+        )
+        if not title_m:
+            title_m = re.search(r">([^<>]{8,160})<", window)
         title = (title_m.group(1).strip() if title_m else "VISITKOREA content")[:200]
+        title = re.sub(r"\s+", " ", title)
         signals.append(
             ParsedSignal(
                 title=title,

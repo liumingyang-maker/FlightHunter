@@ -214,10 +214,14 @@ class HttpxFetchAdapter(SourceAdapter):
             label = a.get_text(" ", strip=True)
             href_raw = a["href"] or ""
             if href_raw.lower().startswith("javascript:"):
-                m = re.search(r"['\"](/[^'\"]+)['\"]", href_raw)
-                if not m:
-                    continue
-                href = urljoin(url, m.group(1))
+                m_abs = re.search(r"https?://[^'\"]+contentsView\.do\?[^'\"]+", href_raw, re.I)
+                if m_abs:
+                    href = m_abs.group(0).replace("&amp;", "&")
+                else:
+                    m_path = re.search(r"['\"](/[^'\"]+)['\"]", href_raw)
+                    if not m_path:
+                        continue
+                    href = urljoin(url, m_path.group(1))
             else:
                 href = urljoin(url, href_raw)
             if not href.startswith("http"):
