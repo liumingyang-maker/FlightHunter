@@ -178,6 +178,19 @@ def materialize_fare_signals(
     return created
 
 
+def _normalize_offer_url(url: str | None) -> str:
+    if not url:
+        return ""
+    u = url.strip().split("#")[0].split("?")[0].rstrip("/")
+    for prefix in ("https://", "http://"):
+        if u.startswith(prefix):
+            u = u[len(prefix) :]
+            break
+    if u.startswith("www."):
+        u = u[4:]
+    return u.lower()
+
+
 def materialize_trip_offer(
     session: Session,
     source: Source,
@@ -186,6 +199,7 @@ def materialize_trip_offer(
     country_code: str | None = None,
 ) -> BenefitOffer | None:
     """行程线索 → BenefitOffer 候选；社区帖不得写成已核实 official_url。"""
+    url_key = _normalize_offer_url(parsed.url or source.base_url)
     existing = session.scalar(
         select(BenefitOffer).where(
             BenefitOffer.title == parsed.title[:400],
@@ -194,6 +208,11 @@ def materialize_trip_offer(
     )
     if existing:
         return existing
+    # 按规范化 URL 去重（跨 jp_benefits / discover 双路径）
+    if url_key:
+        for row in session.scalars(select(BenefitOffer).where(BenefitOffer.demo_only == False)).all():  # noqa: E712
+            if _normalize_offer_url(row.source_url) == url_key and row.title[:80] == parsed.title[:80]:
+                return row
     conditions = {"raw_claim": parsed.raw_claim_text[:500]}
     if "min_spend=" in (parsed.raw_claim_text or ""):
         import re

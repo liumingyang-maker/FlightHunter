@@ -266,7 +266,9 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
     """机票线索：需机票语义 +（金额|双 IATA|促销词），过滤纯攻略标题。"""
     if not label or len(label) < 6:
         return None
-    # 纯教程/导航/问答标题：即使含“机票”也不当可查实信号
+    # 过期促销不应进入“当前可用”层
+    if "过期" in label or "expired" in label.lower():
+        return None
     _noise = (
         "怎么买",
         "如何买",
@@ -283,7 +285,7 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
         "app",
         "App",
     )
-    if any(n in label for n in _noise) and "元" not in label:
+    if any(n in label for n in _noise) and "元" not in label and "¥" not in label:
         return None
     low = label.lower()
     has_deal_kw = any(k in low or k in label for k in _DEAL_KW)
@@ -302,6 +304,20 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
             price = float(m.group(1).replace(",", ""))
         except ValueError:
             price = None
+    if price is None:
+        m_yen = re.search(r"¥\s*(\d[\d,]*)", label)
+        if m_yen:
+            try:
+                price = float(m_yen.group(1).replace(",", ""))
+            except ValueError:
+                price = None
+    if price is None:
+        m_k = re.search(r"(\d+(?:\.\d+)?)\s*[Kk千]", label)
+        if m_k and has_flight_kw:
+            try:
+                price = float(m_k.group(1)) * 1000
+            except ValueError:
+                price = None
     # 仍需机票语义或双 IATA；金额/促销词再降噪
     if origin is None and not has_flight_kw:
         return None
@@ -432,6 +448,18 @@ def parse_raffle_label(label: str, *, page_url: str) -> ParsedSignal | None:
         return None
     types = ["unclassified"]
     if any(k in low for k in ("iphone", "android", "厨", "kitchen", "tripod", "手机")):
+        types = ["prize_other"]
+    elif any(k in low for k in ("mustang", "f-150", "bronco", "kia", "ev5", "truck", "suv", "vehicle", "car ", "汽车", "卡车")) and not any(
+        k in low for k in ("flight", "airfare", "机票")
+    ):
+        types = ["prize_other"]  # 车辆/现金等非免费机票
+    elif any(k in low for k in ("cash", "$", "usd", "prize money", "现金")) and not any(
+        k in low for k in ("trip", "vacation", "flight", "airfare", "hotel", "cruise")
+    ):
+        types = ["prize_other"]
+    elif any(k in low for k in ("boat", "lund", "fishing", "yacht", "船", "游艇")) and not any(
+        k in low for k in ("flight", "airfare", "机票", "round-trip", "roundtrip")
+    ):
         types = ["prize_other"]
     elif any(k in low for k in ("hotel", "cruise", "resort", "邮轮", "酒店")) and not any(
         k in low for k in ("flight", "airfare", "机票", "round-trip", "roundtrip")

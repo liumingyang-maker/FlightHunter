@@ -54,6 +54,9 @@ def upsert_jp_benefit_from_source_text(
     country_code: str = "JP",
 ) -> BenefitOffer:
     """把公开页面线索结构化为 BenefitOffer（unconfirmed，不伪造领取）。"""
+    from app.services.discovery.service import _normalize_offer_url
+
+    url_key = _normalize_offer_url(source_url)
     existing = session.scalar(
         select(BenefitOffer).where(
             BenefitOffer.title == title[:400],
@@ -62,6 +65,17 @@ def upsert_jp_benefit_from_source_text(
     )
     if existing:
         return existing
+    if url_key:
+        for row in session.scalars(select(BenefitOffer).where(BenefitOffer.demo_only == False)).all():  # noqa: E712
+            if _normalize_offer_url(row.source_url) == url_key and (row.title or "")[:80] == title[:80]:
+                return row
+    low = (title or "").lower()
+    if "free" in low or "無料" in title or "免费" in title:
+        offer_kind = "free_admission_info"
+    elif "discount" in low or "deal" in low or "coupon" in low or "优惠" in title or "折扣" in title:
+        offer_kind = "coupon_or_discount"
+    else:
+        offer_kind = "public_event_listing"
     conditions = {
         "raw_evidence": raw_text[:500],
         "source": source_name,
@@ -69,6 +83,8 @@ def upsert_jp_benefit_from_source_text(
         "redeem_window": "待核实",
         "min_spend": None,
         "payment": None,
+        "offer_kind": offer_kind,
+        "not_a_claimed_coupon": True,
     }
     offer = create_benefit_offer(
         session,

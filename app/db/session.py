@@ -155,6 +155,17 @@ def ensure_default_sources(session: Session, settings: Settings) -> list[Source]
         },
         # raffle — public contest/giveaway style pages (read-only)
         {
+            "name": "Sweepstakes Today · Travel",
+            "base_url": "https://www.sweepstoday.com/category/travel/",
+            "kind": "community",
+            "language": "en",
+            "country_code": None,
+            "access_policy": "public_fetch",
+            "allowed_fetch_mode": "httpx",
+            "module": "raffle",
+            "notes": "旅行类公开抽奖列表；候选线索须官网核实",
+        },
+        {
             "name": "Sweepstakes Today 列表",
             "base_url": "https://www.sweepstoday.com/",
             "kind": "community",
@@ -175,6 +186,28 @@ def ensure_default_sources(session: Session, settings: Settings) -> list[Source]
             "allowed_fetch_mode": "httpx",
             "module": "raffle",
             "notes": "公开 sweepstakes 列表；不得视为官方已核实",
+        },
+        {
+            "name": "Contest Girl Daily Sweeps",
+            "base_url": "https://www.contestgirl.com/contests/contests.pl?f=d&c=us&b=nb&sort=p&ar=na&s=_",
+            "kind": "community",
+            "language": "en",
+            "country_code": "US",
+            "access_policy": "public_fetch",
+            "allowed_fetch_mode": "httpx",
+            "module": "raffle",
+            "notes": "每日抽奖明细列表；候选须官网核实",
+        },
+        {
+            "name": "Time Out Tokyo Free Museums",
+            "base_url": "https://www.timeout.com/tokyo/museums/best-free-museums-in-tokyo",
+            "kind": "community",
+            "language": "en",
+            "country_code": "JP",
+            "access_policy": "public_fetch",
+            "allowed_fetch_mode": "httpx",
+            "module": "trip",
+            "notes": "免费博物馆集合页；仅免费入场信息，非已领券",
         },
     ]
     for item in defaults:

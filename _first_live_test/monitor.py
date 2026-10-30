@@ -51,7 +51,9 @@ def counts(db: Path) -> dict:
                 "fare_signals": q("SELECT count(*) FROM fare_deal_signals", "fare_deal_signals"),
                 "evidence_aggregator": q("SELECT count(*) FROM evidences WHERE field_path='aggregator_page_snapshot'", "evidences"),
                 "evidence_official": q("SELECT count(*) FROM evidences WHERE field_path='official_page_snapshot'", "evidences"),
-                "task_failures": q("SELECT count(*) FROM task_runs WHERE status IN ('blocked','failed','partial') AND dry_run=0", "task_runs"),
+                "task_failures": q("SELECT count(*) FROM task_runs WHERE status IN ('failed','partial') AND dry_run=0", "task_runs"),
+                "task_skipped_cooldown": q("SELECT count(*) FROM task_runs WHERE status='skipped' AND dry_run=0", "task_runs"),
+                "task_blocked": q("SELECT count(*) FROM task_runs WHERE status='blocked' AND dry_run=0", "task_runs"),
             }
             issues = {}
             if "campaign_rounds" in tables:
@@ -133,7 +135,15 @@ class Watcher:
         if c.get("alerts",{}).get("REPEATED_SAME_SNAPSHOT"):
             self.emit("P1", "REPEATED_AGGREGATOR_EVIDENCE", f"{c['alerts']['REPEATED_SAME_SNAPSHOT']} duplicated source/hash snapshots")
         if c.get("task_failures", 0) and c.get("task_failures",0) > self.last_counts.get("task_failures", 0):
-            self.emit("WARN", "EXECUTION_PARTIAL_OR_BLOCKED", f"{c['task_failures']} failed/partial/blocked real task runs", discriminator=str(c['task_failures']))
+            self.emit("WARN", "EXECUTION_PARTIAL_OR_FAILED", f"{c['task_failures']} failed/partial real task runs", discriminator=str(c['task_failures']))
+        if c.get("task_blocked", 0) and c.get("task_blocked",0) > self.last_counts.get("task_blocked", 0):
+            self.emit("WARN", "TASK_BLOCKED", f"{c['task_blocked']} blocked real task runs (check source deny/robots)", discriminator=str(c['task_blocked']))
+        # 心跳断档：相邻 metrics 间隔 > 5 分钟则记录（不能把长间隔当连续监控）
+        now = time.monotonic()
+        gap = now - self.start_time if not hasattr(self, "_last_snap_t") else now - self._last_snap_t
+        self._last_snap_t = now
+        if gap > 300:
+            self.emit("WARN", "MONITOR_HEARTBEAT_GAP", f"metrics gap {int(gap)}s between snapshots", discriminator=str(int(gap)))
         self.last_counts = c
         print("[METRICS] " + json.dumps({k:v for k,v in c.items() if k!="alerts"},ensure_ascii=False), flush=True)
         if self.have_sweep_end and not (c.get("raffle_real",0) or c.get("benefits_real",0) or c.get("fare_signals",0)):

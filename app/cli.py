@@ -179,21 +179,28 @@ def discover(
         )
         ok = sum(1 for r in results if r.get("status") == "ok")
         failed = sum(1 for r in results if r.get("status") in ("failed", "denied", "manual_only"))
-        persisted = sum(
-            int(r.get("signals_persisted") or 0)
-            + int(r.get("offers_persisted") or 0)
-            + int(r.get("raffles_persisted") or 0)
-            for r in results
-            if isinstance(r, dict)
-        )
+        source_rows = [r for r in results if isinstance(r, dict) and r.get("source_id")]
         if dry_run:
             run_status = "skipped"
-        elif not results or ok == 0:
+            skip_reason = "dry_run"
+        elif not source_rows:
+            # 冷却/过滤导致无来源可抓：预期跳过，不是失败
+            run_status = "skipped"
+            skip_reason = "cooldown_or_no_due_source"
+        elif ok == 0 and failed and not source_rows:
             run_status = "blocked"
-        elif (ok == 0 and persisted == 0 and failed) or failed:
+            skip_reason = "all_sources_blocked"
+        elif failed and ok:
             run_status = "partial"
+            skip_reason = "partial_source_failures"
+        elif failed and not ok:
+            run_status = "failed"
+            skip_reason = "all_sources_failed"
         else:
             run_status = "completed"
+            skip_reason = None
+        if skip_reason:
+            console.print(f"[yellow]batch_status={run_status} reason={skip_reason}[/yellow]")
         session.add(
             TaskRun(
                 id=new_id(),
@@ -202,19 +209,24 @@ def discover(
                 idempotency_key=key,
                 dry_run=dry_run,
                 message=json.dumps(
-                    [
-                        {
-                            k: r.get(k)
-                            for k in (
-                                "source_id",
-                                "status",
-                                "signals_persisted",
-                                "offers_persisted",
-                                "raffles_persisted",
-                            )
-                        }
-                        for r in results
-                    ],
+                    {
+                        "skip_reason": skip_reason,
+                        "steps": [
+                            {
+                                k: r.get(k)
+                                for k in (
+                                    "source_id",
+                                    "status",
+                                    "signals_persisted",
+                                    "offers_persisted",
+                                    "raffles_persisted",
+                                    "message",
+                                    "error_code",
+                                )
+                            }
+                            for r in results
+                        ],
+                    },
                     ensure_ascii=False,
                     default=str,
                 )[:4000],

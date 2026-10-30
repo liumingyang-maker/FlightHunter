@@ -40,13 +40,38 @@ def main():
             rows.append(f'- DB read error: {scrub(str(e))}')
     issues=run_dir/'alerts.jsonl'
     rows+=['','## 自动监控异常','']
-    if issues.exists():
-        for line in issues.read_text(encoding='utf-8',errors='replace').splitlines()[:60]:
-            try:
-                item=json.loads(line)
-                rows.append(f"- [{item['severity']}] {item['rule']}: {scrub(item['message'])}")
-            except Exception: pass
-    else: rows.append('- 暂无监控记录')
+    if not issues.exists():
+        rows.append('- alerts.jsonl 不存在（监控尚未写出）')
+    else:
+        lines=[ln for ln in issues.read_text(encoding='utf-8',errors='replace').splitlines() if ln.strip()]
+        if not lines:
+            rows.append('- alerts.jsonl 存在但无告警行')
+        else:
+            for line in lines[:60]:
+                try:
+                    item=json.loads(line)
+                    rows.append(f"- [{item.get('severity')}] {item.get('rule')}: {scrub(item.get('message',''))}")
+                except Exception:
+                    rows.append(f'- (unparsed) {scrub(line)}')
+    # task_runs 分解：区分冷却跳过与真实失败
+    rows+=['','## 任务运行分解','']
+    if db.exists():
+        try:
+            with connect_readonly(db) as conn:
+                tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if 'task_runs' in tables:
+                    for status,dry,n in conn.execute(
+                        'SELECT status, dry_run, count(*) FROM task_runs GROUP BY 1,2 ORDER BY 2,1'
+                    ):
+                        rows.append(f'- status={status} dry_run={dry} count={n}')
+                    for status,msg,err in conn.execute(
+                        "SELECT status, substr(coalesce(message,''),1,160), coalesce(error_code,'') "
+                        "FROM task_runs WHERE dry_run=0 AND status IN ('blocked','failed','partial') "
+                        "ORDER BY created_at_utc DESC LIMIT 8"
+                    ):
+                        rows.append(f'  - [{status}] err={err or "-"} msg={scrub(msg)}')
+        except Exception as e:
+            rows.append(f'- task_runs read error: {scrub(str(e))}')
     rows+=['','## 人工验收（请在 FlightHunter Web 检查）','',
            '- [ ] 抽奖：从公开来源发现了真实条目；能点开线索并追到主办方规则；资格未知不虚构通过',
            '- [ ] 日本：发现真实活动与正确城市日期；中文指南指出未核实字段；不存在伪领取成功',
