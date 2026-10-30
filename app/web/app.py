@@ -41,7 +41,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             mig.get("hint") or mig.get("error") or mig.get("state"),
         )
     engine = create_db_engine(settings)
-    init_db(engine)
+    # Existing databases must not be silently altered by create_all after a
+    # migration warning. Only initialise a database that did not exist.
+    if mig.get("action") == "create_all_new_db":
+        init_db(engine)
     factory: sessionmaker[Session] = make_session_factory(engine)
 
     @asynccontextmanager

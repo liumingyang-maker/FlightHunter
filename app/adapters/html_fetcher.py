@@ -19,6 +19,7 @@ from app.adapters.base import FetchResult, ParsedSignal, SourceAdapter
 from app.config import Settings
 from app.core.errors import ErrorCode
 from app.core.ids import content_hash_of_html
+from app.core.safe_http import ROBOTS_MAX_BYTES, _read_body_limited, public_http_transport
 from app.core.url_safety import (
     assert_public_http_url,
     resolve_and_assert_public_host,
@@ -44,12 +45,13 @@ class HttpxFetchAdapter(SourceAdapter):
         if origin not in self._robots_cache:
             rp = robotparser.RobotFileParser()
             try:
-                resp = await client.get(f"{origin}/robots.txt", timeout=10)
-                if resp.status_code == 200:
-                    rp.parse(resp.text.splitlines())
-                    self._robots_cache[origin] = rp
-                else:
-                    self._robots_cache[origin] = None
+                async with client.stream("GET", f"{origin}/robots.txt", timeout=10) as resp:
+                    raw = await _read_body_limited(resp, ROBOTS_MAX_BYTES) if resp.status_code == 200 else None
+                    if raw is not None:
+                        rp.parse(raw.decode("utf-8", errors="replace").splitlines())
+                        self._robots_cache[origin] = rp
+                    else:
+                        self._robots_cache[origin] = None
             except Exception:
                 self._robots_cache[origin] = None
         entry = self._robots_cache.get(origin)
@@ -80,6 +82,7 @@ class HttpxFetchAdapter(SourceAdapter):
                 timeout=timeout,
                 follow_redirects=False,
                 trust_env=False,
+                transport=public_http_transport(),
             ) as client:
                 for _hop in range(_MAX_REDIRECT_HOPS + 1):
                     try:
@@ -105,79 +108,50 @@ class HttpxFetchAdapter(SourceAdapter):
                             final_url=current,
                             fetched_at=datetime.now(UTC),
                         )
-                    try:
-                        resp = await client.get(current)
-                    except httpx.HTTPError as exc:
-                        return FetchResult(
-                            ok=False,
-                            url=url,
-                            error_code=ErrorCode.SOURCE_UNAVAILABLE.value,
-                            message=str(exc),
-                            final_url=current,
-                            fetched_at=datetime.now(UTC),
-                        )
-
-                    if resp.status_code in (301, 302, 303, 307, 308):
-                        loc = resp.headers.get("location")
-                        if not loc:
+                    async with client.stream("GET", current) as resp:
+                        if resp.status_code in (301, 302, 303, 307, 308):
+                            loc = resp.headers.get("location")
+                            if not loc:
+                                return FetchResult(
+                                    ok=False, url=url, status_code=resp.status_code,
+                                    error_code=ErrorCode.SOURCE_UNAVAILABLE.value,
+                                    message="重定向缺少 Location", final_url=current,
+                                    fetched_at=datetime.now(UTC),
+                                )
+                            nxt = urljoin(current, loc)
+                            try:
+                                safe_redirect_target(nxt)
+                                nxt_host = (urlparse(nxt).hostname or "").lower()
+                                resolve_and_assert_public_host(nxt_host)
+                            except Exception as exc:
+                                return FetchResult(
+                                    ok=False, url=url, error_code=ErrorCode.URL_NOT_PUBLIC.value,
+                                    message=f"重定向目标不安全（未发起请求）: {exc}",
+                                    final_url=nxt, fetched_at=datetime.now(UTC),
+                                )
+                            current = nxt
+                            continue
+                        if resp.status_code >= 400:
                             return FetchResult(
-                                ok=False,
-                                url=url,
-                                status_code=resp.status_code,
+                                ok=False, url=url, status_code=resp.status_code,
                                 error_code=ErrorCode.SOURCE_UNAVAILABLE.value,
-                                message="重定向缺少 Location",
-                                final_url=current,
+                                message=f"HTTP {resp.status_code}", final_url=str(resp.url),
                                 fetched_at=datetime.now(UTC),
                             )
-                        nxt = urljoin(current, loc)
-                        try:
-                            safe_redirect_target(nxt)
-                            nxt_host = (urlparse(nxt).hostname or "").lower()
-                            resolve_and_assert_public_host(nxt_host)
-                        except Exception as exc:
+                        content = await _read_body_limited(resp, self.settings.sources.max_html_bytes)
+                        if content is None:
                             return FetchResult(
-                                ok=False,
-                                url=url,
-                                error_code=ErrorCode.URL_NOT_PUBLIC.value,
-                                message=f"重定向目标不安全（未发起请求）: {exc}",
-                                final_url=nxt,
-                                fetched_at=datetime.now(UTC),
+                                ok=False, url=url, status_code=resp.status_code,
+                                error_code=ErrorCode.SOURCE_UNAVAILABLE.value,
+                                message="响应体超过大小限制或读取失败", fetched_at=datetime.now(UTC),
                             )
-                        current = nxt
-                        continue
-
-                    if resp.status_code >= 400:
+                        text = content.decode("utf-8", errors="replace")
                         return FetchResult(
-                            ok=False,
-                            url=url,
-                            status_code=resp.status_code,
-                            error_code=ErrorCode.SOURCE_UNAVAILABLE.value,
-                            message=f"HTTP {resp.status_code}",
-                            final_url=str(resp.url),
+                            ok=True, url=url, status_code=resp.status_code,
+                            content_type=resp.headers.get("content-type"), text=text,
+                            content_hash=content_hash_of_html(text), final_url=current,
                             fetched_at=datetime.now(UTC),
                         )
-
-                    content = resp.content
-                    if len(content) > self.settings.sources.max_html_bytes:
-                        return FetchResult(
-                            ok=False,
-                            url=url,
-                            status_code=resp.status_code,
-                            error_code=ErrorCode.SOURCE_UNAVAILABLE.value,
-                            message="响应体超过大小限制",
-                            fetched_at=datetime.now(UTC),
-                        )
-                    text = content.decode("utf-8", errors="replace")
-                    return FetchResult(
-                        ok=True,
-                        url=url,
-                        status_code=resp.status_code,
-                        content_type=resp.headers.get("content-type"),
-                        text=text,
-                        content_hash=content_hash_of_html(text),
-                        final_url=current,
-                        fetched_at=datetime.now(UTC),
-                    )
                 return FetchResult(
                     ok=False,
                     url=url,
@@ -256,6 +230,8 @@ class HttpxFetchAdapter(SourceAdapter):
                     published_at=published,
                 )
             if sig:
+                if sig.published_at is None:
+                    sig.published_at = _extract_published_only(label)
                 signals.append(sig)
             if len(signals) >= 50:
                 break
@@ -511,6 +487,9 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
     low = label.lower()
     has_deal_kw = any(k in low or k in label for k in _DEAL_KW)
     has_flight_kw = any(k in low or k in label for k in _FARE_KW)
+    has_reported_amount = bool(
+        _PRICE_RE.search(label) or re.search(r"(?:HK\$?|MOP\$?|¥)\s*\d", label, re.I)
+    )
     if not has_deal_kw and not has_flight_kw:
         return None
     codes = [c for c in _IATA_RE.findall(label) if c.isalpha() and c.isupper()]
@@ -593,7 +572,12 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
                     label,
                 )
             )
-            if m_hkd and len(dests_found) <= 1:
+            explicit_hk_route = bool(re.search(
+                r"(?:香港|澳門|澳门|HKG|MFM)\s*(?:→|->|至|飞)\s*"
+                r"(?:大阪|东京|首尔|曼谷|新加坡|台北|上海|北京|成都)",
+                label, re.I,
+            ))
+            if m_hkd and (len(dests_found) <= 1 or (len(dests_found) == 2 and explicit_hk_route)):
                 try:
                     price = float(m_hkd.group(2).replace(",", ""))
                     currency = _currency_from_token(m_hkd.group(1))
@@ -614,10 +598,23 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
                 currency = "CNY"
             except ValueError:
                 price = None
+    # 不同目的地的多个价格不能合成为一个全局票价，包括人民币和千元写法。
+    routes = extract_route_price_candidates(label)
+    explicit_amounts = {
+        (float(amount.replace(",", "")), "CNY") for amount in _PRICE_RE.findall(label)
+    }
+    for amount_match in re.finditer(r"(MOP\$?|HK\$?|¥)\s*(\d[\d,]*)", label, re.I):
+        explicit_amounts.add((
+            float(amount_match.group(2).replace(",", "")),
+            _currency_from_token(amount_match.group(1)),
+        ))
+    if len(explicit_amounts) > 1 or len({(r.get("amount"), r.get("currency")) for r in routes}) > 1:
+        price = None
+        currency = None
     # 仍需机票语义或双 IATA；金额/促销词再降噪
     if origin is None and not has_flight_kw:
         return None
-    if price is None and origin is None and not has_deal_kw:
+    if price is None and origin is None and not has_deal_kw and not has_reported_amount:
         return None
     # D-005/N-005：减免/优惠额/立省 ≠ 票价（简繁中英）
     if re.search(

@@ -11,6 +11,7 @@ from typing import Any
 from urllib import robotparser
 from urllib.parse import urlparse
 
+import httpcore
 import httpx
 
 from app.core.url_safety import (
@@ -22,6 +23,53 @@ MAX_REDIRECTS = 5
 MAX_BYTES = 8_000_000
 ROBOTS_MAX_BYTES = 256_000
 DEFAULT_UA = "FlightHunter-Bot/1.0 (safe-fetch; local research)"
+
+
+class PublicAddressBackend(httpcore.AsyncNetworkBackend):
+    """Resolve and validate the address used by the actual TCP connection.
+
+    HTTPX/httpcore still see the original origin, so Host and TLS SNI/certificate
+    validation continue to use the hostname rather than the chosen IP address.
+    """
+
+    def __init__(self, backend: httpcore.AsyncNetworkBackend | None = None) -> None:
+        self._backend = backend or httpcore.AnyIOBackend()
+
+    async def connect_tcp(
+        self, host: str, port: int, timeout: float | None = None,
+        local_address: str | None = None, socket_options: Any = None,
+    ) -> httpcore.AsyncNetworkStream:
+        addresses = await asyncio.to_thread(resolve_and_assert_public_host, host)
+        last_error: Exception | None = None
+        for address in addresses:
+            try:
+                return await self._backend.connect_tcp(
+                    host=address, port=port, timeout=timeout,
+                    local_address=local_address, socket_options=socket_options,
+                )
+            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
+                last_error = exc
+        if last_error:
+            raise last_error
+        raise httpcore.ConnectError("No validated public address available")
+
+    async def connect_unix_socket(self, *args: Any, **kwargs: Any) -> httpcore.AsyncNetworkStream:
+        raise httpcore.ConnectError("Unix sockets are not allowed for public fetches")
+
+    async def sleep(self, seconds: float) -> None:
+        await self._backend.sleep(seconds)
+
+
+def public_http_transport() -> httpx.AsyncHTTPTransport:
+    """Install the validating network backend on HTTPX's direct connection pool."""
+    transport = httpx.AsyncHTTPTransport(trust_env=False)
+    # HTTPX exposes no public hook for httpcore's network_backend. Fail closed
+    # if a future HTTPX version no longer provides the expected direct pool.
+    pool = transport._pool
+    if not isinstance(pool, httpcore.AsyncConnectionPool) or not hasattr(pool, "_network_backend"):
+        raise RuntimeError("HTTPX public-address transport is incompatible")
+    pool._network_backend = PublicAddressBackend()
+    return transport
 
 
 @dataclass
@@ -89,6 +137,7 @@ async def safe_get(
             timeout=timeout,
             follow_redirects=False,
             trust_env=False,
+            transport=public_http_transport(),
             headers=hdrs,
         )
     try:

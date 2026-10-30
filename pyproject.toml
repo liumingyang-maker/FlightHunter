@@ -8,6 +8,7 @@ license = { text = "MIT" }
 authors = [{ name = "FlightHunter" }]
 dependencies = [
     "httpx>=0.27.0",
+    "httpcore>=1.0.0,<2.0.0",
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
     "sqlalchemy>=2.0.36",

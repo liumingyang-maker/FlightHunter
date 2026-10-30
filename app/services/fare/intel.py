@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import FareDealSignal, Source
+from app.models import FareDeal, FareDealSignal, Source
 from app.services.airports.china import match_signal_origins
 
 # 用户反馈写入 signal_status（避免重迁移）；预留未来独立反馈表
@@ -390,11 +390,7 @@ def extract_origin_iatas_from_title(title: str) -> list[str]:
                 add(iata)
                 break
 
-    # 品牌弱提示：仅香港航司品牌且无相反内地出发、且标题本身无已解析出发时才可 HKG
-    # N-003：Peach/乐桃是日本航司，不得映射 HKG；目的地城市不得当出发
-    if brand_hk and not explicit and not found:
-        if re.search(r"(香港|HKG|Hong\s*Kong)", body, re.I) or brand_hk:
-            add("HKG")
+    # 航司品牌不证明出发地；缺少明确方向时保留未知。
 
     # 港澳优惠语境：仅当无显式出发、且城市更像促销主场时
     if not explicit and not found and not brand_hk:
@@ -649,6 +645,7 @@ def build_intel_view(
         if (s.signal_status or "") in FEEDBACK_STATES:
             priority += 100  # 已处理降权
         src = session.get(Source, s.source_id) if s.source_id else None
+        deal = session.get(FareDeal, s.deal_id) if s.deal_id else None
         out.append(
             {
                 "signal_id": s.id,
@@ -673,7 +670,11 @@ def build_intel_view(
                 "user_feedback": s.signal_status
                 if (s.signal_status or "") in FEEDBACK_STATES
                 else None,
-                "travel_date_hint": getattr(s, "travel_date_hint", None),
+                "travel_date_hint": deal.travel_date_hint if deal else None,
+                "travel_window_start": deal.travel_window_start.isoformat()
+                if deal and deal.travel_window_start else None,
+                "travel_window_end": deal.travel_window_end.isoformat()
+                if deal and deal.travel_window_end else None,
                 "priority": priority,
                 "is_live_bookable_price": False,  # 情报模式硬约束
                 "city_match_level": city_match_level,
@@ -702,8 +703,6 @@ def intel_quality_stats(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """质量统计：新发现/城市匹配/全国待核实/过期/重复/链接（不自动点外链时 link_checked=None）。"""
-    import httpx
-
     from app.services.airports.china import expand_origin_selection
 
     now_n = now or datetime.now(UTC).replace(tzinfo=None)

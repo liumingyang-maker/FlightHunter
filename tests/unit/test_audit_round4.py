@@ -190,6 +190,21 @@ def test_redirect_dns_private_not_requested(monkeypatch):
         async def __aexit__(self, *a):
             return False
 
+        def stream(self, method, url, **kwargs):
+            from contextlib import asynccontextmanager
+
+            @asynccontextmanager
+            async def response():
+                result = await self.get(url, **kwargs)
+
+                async def aiter_bytes():
+                    yield result.content
+
+                result.aiter_bytes = aiter_bytes
+                yield result
+
+            return response()
+
         async def get(self, url, **kwargs):
             called.append(url)
             if "evil-rebind" in url:

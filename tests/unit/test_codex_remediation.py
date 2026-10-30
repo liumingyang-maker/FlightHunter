@@ -20,7 +20,8 @@ def test_d003_hk_airline_shanghai_not_hkg():
 
 def test_d003_hk_express_hk_not_pek():
     origins = extract_origin_iatas_from_title("HK Express 13週年優惠！台灣來回連稅HK$800、日本東京大阪HK$1,500起 北京")
-    assert "HKG" in origins
+    # 品牌本身不能证明出发地；无明确出发信息时保持未知。
+    assert "HKG" not in origins
     assert "PEK" not in origins
 
 

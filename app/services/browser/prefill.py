@@ -39,14 +39,15 @@ def build_prefill_plan(
     assert_public_http_url(round_.official_url)
 
     mode = round_.automation_policy
-    if mode == "forbidden":
-        plan_mode = "MANUAL_ONLY"
-    elif mode == "allowed":
+    if mode == "allowed":
         plan_mode = "PREFILL_AND_REVIEW"  # 即使站点允许，仍默认人工确认
     else:
-        plan_mode = "PREFILL_AND_REVIEW"
+        # 官方活动真实不代表允许自动操作；未知许可必须由用户手动填写。
+        plan_mode = "MANUAL_ONLY"
 
     plan = PrefillPlan(target_url=round_.official_url, mode=plan_mode)
+    if plan_mode == "MANUAL_ONLY":
+        plan.requires_human.append("站点自动化许可未知或不允许，请人工填写")
 
     if round_.has_captcha is True:
         plan.requires_human.append("CAPTCHA：系统不绕过，请人工完成")

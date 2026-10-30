@@ -655,12 +655,10 @@ def eligibility_with_synthetic_profile(
     if age is None:
         checks.append({"code": "AGE", "outcome": "unknown", "note": "年龄未知（不得假定 18+）"})
         reasons.append("AGE_UNKNOWN")
-    elif age < 18:
-        checks.append({"code": "AGE", "outcome": "ineligible", "note": "未成年"})
-        state = "ineligible"
-        reasons.append("AGE")
     else:
-        checks.append({"code": "AGE", "outcome": "pass", "note": f"age={age}"})
+        # 此规则模型尚未保存官方年龄限制，不能自行假设 18 岁门槛。
+        checks.append({"code": "AGE", "outcome": "unknown", "note": "官方年龄规则尚未结构化"})
+        reasons.append("AGE_RULE_UNKNOWN")
 
     if state != "ineligible":
         if any(c["outcome"] == "unknown" for c in checks):

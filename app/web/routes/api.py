@@ -457,7 +457,7 @@ def _apply_intel_filters(
     from datetime import datetime
 
     # 目的地城市别名 → IATA（仅目的地语境，不含航司品牌）
-    _DEST_ALIAS = {
+    dest_alias = {
         "香港": "HKG",
         "HK": "HKG",
         "澳门": "MFM",
@@ -475,8 +475,8 @@ def _apply_intel_filters(
     out = rows
     if destination:
         d = destination.strip().upper()
-        alias = _DEST_ALIAS.get(destination.strip(), None)
-        if alias is None and destination.strip() in _DEST_ALIAS:
+        alias = dest_alias.get(destination.strip())
+        if alias is None and destination.strip() in dest_alias:
             # 台湾等：仅结构化字段或明确目的地词在 dest 位
             alias = ""
 
@@ -494,9 +494,7 @@ def _apply_intel_filters(
                 return True
             # dest 字段城市名
             dest_city = (it.get("destination_city") or "") or ""
-            if dest_city and dest_city == destination.strip():
-                return True
-            return False
+            return bool(dest_city and dest_city == destination.strip())
 
         out = [it for it in out if dest_match(it)]
     if category:
@@ -537,8 +535,8 @@ def _apply_intel_filters(
                 return _parse_dt(it.get("published_at") if isinstance(it.get("published_at"), str) else None)
             if field == "found":
                 return _parse_dt(it.get("found_at") if isinstance(it.get("found_at"), str) else None)
-            # auto：优先出行→发布→发现
-            for k in ("travel_date_hint", "published_at", "found_at"):
+            # 默认界面筛选发布/发现时间；出行日期需显式选择 travel。
+            for k in ("published_at", "found_at"):
                 raw = it.get(k)
                 if not raw:
                     continue
@@ -549,14 +547,20 @@ def _apply_intel_filters(
             return None
 
         def time_ok(it: dict) -> bool:
+            if field == "travel":
+                start = _parse_dt(it.get("travel_window_start"))
+                end = _parse_dt(it.get("travel_window_end"))
+                if start and end:
+                    return not (
+                        (dfrom and end.date() < dfrom.date())
+                        or (dto and start.date() > dto.date())
+                    )
             dt = pick_time(it)
             if dt is None:
                 return False
             if dfrom and dt.date() < dfrom.date():
                 return False
-            if dto and dt.date() > dto.date():
-                return False
-            return True
+            return not (dto and dt.date() > dto.date())
 
         out = [it for it in out if time_ok(it)]
     return out

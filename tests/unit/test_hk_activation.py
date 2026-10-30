@@ -11,7 +11,8 @@ def test_peach_hk_title_parses_with_hkd():
     label = "Peach大阪機票優惠！來回連稅預計約HK$1,600起、連20kg行李約HK$2,150起"
     sig = parse_deal_label(label, page_url="https://flynext.hk/blog/x")
     assert sig is not None
-    assert sig.reported_total in {1600.0, 2150.0}
+    # 两种不同的行李方案价格未结构化区分时，不应任取一个当统一票价。
+    assert sig.reported_total is None
 
 
 def test_hk_origin_in_title():

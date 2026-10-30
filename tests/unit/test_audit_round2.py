@@ -253,6 +253,21 @@ def test_html_fetch_redirect_blocked_before_request(monkeypatch):
         async def __aexit__(self, *a):
             return False
 
+        def stream(self, method, url, **kwargs):
+            from contextlib import asynccontextmanager
+
+            @asynccontextmanager
+            async def response():
+                result = await self.get(url, **kwargs)
+
+                async def aiter_bytes():
+                    yield getattr(result, "text", "").encode()
+
+                result.aiter_bytes = aiter_bytes
+                yield result
+
+            return response()
+
         async def get(self, url, **kwargs):
             called.append(url)
             if url.endswith("/robots.txt"):

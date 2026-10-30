@@ -296,6 +296,15 @@ def test_robots_non_200_fail_closed(monkeypatch):
         async def __aexit__(self, *a):
             return False
 
+        def stream(self, method, url, **kwargs):
+            from contextlib import asynccontextmanager
+
+            @asynccontextmanager
+            async def response():
+                yield await self.get(url, **kwargs)
+
+            return response()
+
         async def get(self, url, **kwargs):
             return FakeResp()
 
