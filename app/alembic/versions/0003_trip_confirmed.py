@@ -7,17 +7,24 @@ depends_on = None
 
 
 def upgrade() -> None:
-    import sqlalchemy as sa
-
     from alembic import op
+    import sqlalchemy as sa
+    from sqlalchemy import inspect
 
-    op.add_column(
-        "trips",
-        sa.Column("confirmed", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
+    bind = op.get_bind()
+    cols = {c["name"] for c in inspect(bind).get_columns("trips")}
+    if "confirmed" not in cols:
+        op.add_column(
+            "trips",
+            sa.Column("confirmed", sa.Boolean(), nullable=False, server_default=sa.false()),
+        )
 
 
 def downgrade() -> None:
     from alembic import op
+    from sqlalchemy import inspect
 
-    op.drop_column("trips", "confirmed")
+    bind = op.get_bind()
+    cols = {c["name"] for c in inspect(bind).get_columns("trips")}
+    if "confirmed" in cols:
+        op.drop_column("trips", "confirmed")
