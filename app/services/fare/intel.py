@@ -354,6 +354,73 @@ def _zh_summary(s: FareDealSignal) -> str:
     return "；".join(bits)
 
 
+def intel_quality_stats(
+    session: Session,
+    filt: IntelFilter | None = None,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """质量统计：新发现/城市匹配/全国待核实/过期/重复/链接（不自动点外链时 link_checked=None）。"""
+    import httpx
+
+    from app.services.airports.china import expand_origin_selection
+
+    now_n = now or datetime.now(UTC)
+    filt = filt or IntelFilter(
+        preferred_origins=expand_origin_selection(multi=["CKG", "TFU", "CTU"])
+    )
+    all_rows = session.scalars(
+        select(FareDealSignal).order_by(FareDealSignal.created_at_utc.desc()).limit(100)
+    ).all()
+    day_ago = now_n - timedelta(hours=24)
+    expired = 0
+    for s in all_rows:
+        if _is_expired(s, now_n):
+            expired += 1
+    view = build_intel_view(session, filt, limit=50)
+    by_level: dict[str, int] = {}
+    for v in view:
+        lvl = v.get("city_match_level") or "origin_unknown"
+        by_level[lvl] = by_level.get(lvl, 0) + 1
+    merged = sum(1 for v in view if v.get("is_merged"))
+    new_24h = sum(
+        1
+        for s in all_rows
+        if s.created_at_utc and s.created_at_utc.replace(tzinfo=None) >= day_ago
+    )
+    # 抽样检查链接（最多 8 条，避免打爆）
+    link_checked = 0
+    link_ok = 0
+    link_bad = 0
+    headers = {"User-Agent": "FlightHunter-Bot/1.0 (quality stats)"}
+    for v in view[:8]:
+        url = v.get("source_url")
+        if not url:
+            continue
+        link_checked += 1
+        try:
+            r = httpx.get(url, headers=headers, timeout=10, follow_redirects=True)
+            if r.status_code < 400:
+                link_ok += 1
+            else:
+                link_bad += 1
+        except Exception:
+            link_bad += 1
+    return {
+        "generated_at": now_n.isoformat(),
+        "signals_total_sampled": len(all_rows),
+        "signals_new_24h": new_24h,
+        "expired_flagged": expired,
+        "intel_view_count": len(view),
+        "city_match_levels": by_level,
+        "merged_duplicate_groups": merged,
+        "link_sample_checked": link_checked,
+        "link_sample_ok": link_ok,
+        "link_sample_bad": link_bad,
+        "note": "HTTP 200 ≠ 优惠仍有效；过期/重复单列",
+    }
+
+
 def apply_user_feedback(
     session: Session,
     signal_id: str,

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +25,8 @@ console = Console()
 
 
 def _project_root() -> Path:
-    return Path.cwd()
+    """仓库根：基于 app 包位置，避免 cwd 不同导致锁/库路径错乱。"""
+    return Path(__file__).resolve().parent.parent
 
 
 def _load():
@@ -401,6 +404,34 @@ def scan_due(
     engine.dispose()
 
 
+@app.command("intel-quality")
+def intel_quality_cmd(
+    config: str | None = typer.Option(None, "--config"),
+) -> None:
+    """国际机票情报质量统计（新发现/城市匹配/过期/重复/链接抽样）。"""
+    settings = load_settings(config, project_root=_project_root())
+    from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
+    from app.services.fare.intel import intel_quality_stats
+
+    engine = create_db_engine(settings)
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as session:
+        console.print_json(json.dumps(intel_quality_stats(session), ensure_ascii=False, default=str))
+    engine.dispose()
+
+
+@app.command("worker-status")
+def worker_status_cmd(
+    config: str | None = typer.Option(None, "--config"),
+) -> None:
+    """查看 worker 单实例锁与心跳。"""
+    settings = load_settings(config, project_root=_project_root())
+    from app.services.ops.worker_lock import worker_status
+
+    console.print_json(json.dumps(worker_status(settings), ensure_ascii=False, default=str))
+
+
 @app.command("worker")
 def worker(
     once: bool = typer.Option(False, "--once", help="只跑一轮后退出"),
@@ -415,12 +446,25 @@ def worker(
     settings = load_settings(config, project_root=_project_root())
     from app.db.session import create_db_engine, init_db, make_session_factory, session_scope
     from app.scheduler.jobs import run_due_scans
+    from app.services.ops.worker_lock import (
+        acquire_worker_lock,
+        heartbeat,
+        release_worker_lock,
+    )
+
+    ok_lock, lock_path, msg = acquire_worker_lock(settings, interval_seconds=interval)
+    if not ok_lock:
+        console.print(f"[red]worker 已在运行，拒绝重复启动: {msg}[/red]")
+        raise typer.Exit(2)
 
     engine = create_db_engine(settings)
     init_db(engine)
     factory = make_session_factory(engine)
     rounds = 0
     try:
+        console.print(
+            f"[green]worker lock {lock_path} pid={os.getpid()} db={settings.storage.sqlite_path}[/green]"
+        )
         while True:
             rounds += 1
             with session_scope(factory) as session:
@@ -431,11 +475,21 @@ def worker(
                     limit=limit,
                     include_raffle_pipeline=True,
                 )
+            heartbeat(
+                lock_path,
+                interval_seconds=interval,
+                rounds=rounds,
+                last_scans=len(runs),
+                last_run_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            )
             console.print(f"[worker #{rounds}] scans={len(runs)} execute={execute}")
             if once:
                 break
             time.sleep(max(30, interval))
+    except KeyboardInterrupt:
+        console.print("[yellow]worker interrupted[/yellow]")
     finally:
+        release_worker_lock(lock_path, pid=os.getpid())
         engine.dispose()
 
 
