@@ -196,8 +196,95 @@ def run_due_scans(
     *,
     dry_run: bool = True,
     limit: int = 10,
+    include_raffle_pipeline: bool = False,
 ) -> list[TaskRun]:
     runs: list[TaskRun] = []
     for sub in claim_due_subscriptions(session, limit=limit):
         runs.append(run_subscription_scan(session, settings, sub, dry_run=dry_run))
+    # 全局抽奖主流程：仅在显式开启（worker --execute / scan-due）时纳入
+    if include_raffle_pipeline:
+        runs.append(
+            run_raffle_pipeline(
+                session, settings, dry_run=dry_run, limit=max(2, limit // 2 or 2)
+            )
+        )
     return runs
+
+
+def run_raffle_pipeline(
+    session: Session,
+    settings: Settings,
+    *,
+    dry_run: bool = True,
+    limit: int = 3,
+) -> TaskRun:
+    """公开来源扫描 → 候选 → 自动证据核验 → 六态状态（discover 内已挂 auto_verify）。"""
+    now = utc_now()
+    mode = "dry" if dry_run else "exec"
+    # 分钟级幂等：发现源冷却仍生效；避免整小时缓存挡住自动核验
+    idem = idempotency_key("raffle_pipeline", mode, now.strftime("%Y-%m-%dT%H%M"))
+    existing = session.scalar(select(TaskRun).where(TaskRun.idempotency_key == idem))
+    if existing and existing.status in {"running", "completed", "blocked", "partial"}:
+        return existing
+    run = TaskRun(
+        id=new_id(),
+        task_type="raffle_auto_pipeline",
+        status="running",
+        idempotency_key=idem,
+        dry_run=dry_run,
+        started_at=now,
+    )
+    session.add(run)
+    session.flush()
+    try:
+        results = asyncio.run(
+            run_discovery(
+                session,
+                settings,
+                module="raffle",
+                dry_run=dry_run,
+                limit=limit,
+                persist_signals=not dry_run,
+                after_fetch=not dry_run,
+            )
+        )
+        # 即使发现被来源冷却跳过，也补跑待核验轮次
+        if not dry_run:
+            from app.services.raffle.auto_verify import auto_verify_pending_rounds
+
+            extra = asyncio.run(auto_verify_pending_rounds(session, settings, limit=limit))
+            results = [
+                *list(results),
+                {
+                    "source_id": None,
+                    "status": "post_raffle_auto_verify_extra",
+                    "verified": sum(1 for r in extra if r.get("ok")),
+                    "failed": sum(1 for r in extra if not r.get("ok")),
+                    "steps": extra,
+                },
+            ]
+        ok = sum(1 for r in results if r.get("status") in {"ok", "post_raffle_auto_verify", "post_raffle_auto_verify_extra"})
+        failed = sum(1 for r in results if r.get("status") in {"failed", "denied", "manual_only"})
+        verified = sum(int(r.get("verified") or 0) for r in results if isinstance(r, dict))
+        run.status = "completed" if (ok and not failed) else ("partial" if ok else "failed")
+        run.message = json.dumps(
+            {
+                "ok": ok,
+                "failed": failed,
+                "auto_verified": verified,
+                "steps": [
+                    {k: r.get(k) for k in ("status", "source_id", "verified", "failed", "open_status")}
+                    for r in results
+                ],
+            },
+            ensure_ascii=False,
+            default=str,
+        )[:4000]
+        run.finished_at = utc_now()
+    except Exception as exc:
+        run.status = "failed"
+        run.error_code = "SOURCE_UNAVAILABLE"
+        run.message = str(exc)[:1000]
+        run.finished_at = utc_now()
+    session.flush()
+    return run

@@ -34,12 +34,28 @@ PUBLIC_EXACT = frozenset(
 PUBLIC_PREFIXES = ("/static",)
 
 
+def _state_dir(settings: Settings) -> Path:
+    """鉴权/会话状态目录：隔离库旁路，避免测试复用正式 auth.json。"""
+    auth_dir = getattr(settings.auth, "state_dir", None)
+    if auth_dir:
+        return Path(auth_dir)
+    db = Path(settings.storage.sqlite_path)
+    if not db.is_absolute():
+        db = Path(settings.project_root) / db
+    db = db.resolve()
+    root = Path(settings.project_root).resolve()
+    # SQLite 不在仓库 data/ 下 → 视为隔离环境，状态写在 DB 同目录
+    if db.parent != root / "data" and root not in db.parents:
+        return db.parent
+    return root / "data"
+
+
 def _auth_file_path(settings: Settings) -> Path:
-    return Path(settings.project_root) / "data" / "auth.json"
+    return _state_dir(settings) / "auth.json"
 
 
 def _sessions_file_path(settings: Settings) -> Path:
-    return Path(settings.project_root) / "data" / "sessions.json"
+    return _state_dir(settings) / "sessions.json"
 
 
 def _load_auth_file(settings: Settings) -> dict:

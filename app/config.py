@@ -14,11 +14,12 @@ class AuthConfig(BaseModel):
     """本地 API 鉴权。私人数据接口必须认证。"""
 
     enabled: bool = True
-    api_token: str | None = None  # 为空则首次启动自动生成并写入 data/auth.json
+    api_token: str | None = None  # 为空则首次启动自动生成并写入 auth 文件
     session_cookie_name: str = "fh_session"
     session_max_age_seconds: int = 7 * 24 * 3600
-    # 演示环境可在 config 显式设置固定 token 便于测试
     allow_login_with_token: bool = True
+    # 测试/隔离环境：显式状态目录（auth.json/sessions.json），避免与正式环境共用
+    state_dir: str | None = None
 
 
 class AppConfig(BaseModel):

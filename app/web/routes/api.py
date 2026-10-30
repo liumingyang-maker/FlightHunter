@@ -764,7 +764,9 @@ def scheduler_run_due(db: DbDep, settings: SettingsDep, limit: int = Query(10, l
     """真实执行到期扫描（仍遵守来源策略与 dry/execute 幂等分离）。"""
     from app.scheduler.jobs import run_due_scans
 
-    runs = run_due_scans(db, settings, dry_run=False, limit=limit)  # type: ignore[arg-type]
+    runs = run_due_scans(
+        db, settings, dry_run=False, limit=limit, include_raffle_pipeline=True
+    )  # type: ignore[arg-type]
     db.commit()
     return _ok(
         [

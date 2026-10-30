@@ -342,7 +342,13 @@ def scan_due(
     init_db(engine)
     factory = make_session_factory(engine)
     with session_scope(factory) as session:
-        runs = run_due_scans(session, settings, dry_run=not execute, limit=limit)
+        runs = run_due_scans(
+            session,
+            settings,
+            dry_run=not execute,
+            limit=limit,
+            include_raffle_pipeline=execute,
+        )
         table = Table(title="到期扫描结果")
         table.add_column("任务")
         table.add_column("状态")
@@ -377,7 +383,13 @@ def worker(
         while True:
             rounds += 1
             with session_scope(factory) as session:
-                runs = run_due_scans(session, settings, dry_run=not execute, limit=limit)
+                runs = run_due_scans(
+                    session,
+                    settings,
+                    dry_run=not execute,
+                    limit=limit,
+                    include_raffle_pipeline=True,
+                )
             console.print(f"[worker #{rounds}] scans={len(runs)} execute={execute}")
             if once:
                 break

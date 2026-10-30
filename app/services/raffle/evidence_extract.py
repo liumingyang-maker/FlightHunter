@@ -138,8 +138,45 @@ def discover_page_assets(html: str, page_url: str) -> list[dict[str, Any]]:
     return assets[:30]
 
 
-def _ocr_image_bytes(data: bytes, *, langs: str = "eng") -> tuple[str, str]:
-    """返回 (text, method)。视觉/OCR 失败则抛给调用方处理。"""
+def detect_text_lang(html_or_text: str) -> str:
+    """粗判 zh/ja/ko/en，用于选择 OCR 语言包。"""
+    sample = (html_or_text or "")[:4000]
+    m = re.search(r"<html[^>]+lang=[\"']([a-zA-Z-]+)", sample, re.I)
+    if m:
+        tag = m.group(1).lower()
+        if tag.startswith("zh"):
+            return "zh"
+        if tag.startswith("ja"):
+            return "ja"
+        if tag.startswith("ko"):
+            return "ko"
+        if tag.startswith("en"):
+            return "en"
+    # 字符统计
+    cjk = len(re.findall(r"[一-鿿]", sample))
+    ja = len(re.findall(r"[぀-ヿ]", sample))
+    hangul = len(re.findall(r"[가-힯]", sample))
+    if hangul > max(20, cjk * 0.2) and hangul > ja:
+        return "ko"
+    if ja > max(20, cjk * 0.2):
+        return "ja"
+    if cjk > 30:
+        return "zh"
+    return "en"
+
+
+def ocr_lang_candidates(lang: str) -> list[str]:
+    table = {
+        "zh": ["chi_sim+eng", "chi_sim", "eng"],
+        "ja": ["jpn+eng", "jpn", "eng"],
+        "ko": ["kor+eng", "kor", "eng"],
+        "en": ["eng"],
+    }
+    return table.get(lang, ["eng"])
+
+
+def _ocr_image_bytes(data: bytes, *, langs: str | None = None, page_lang: str | None = None) -> tuple[str, str]:
+    """返回 (text, method)。多语言 OCR；失败抛 RuntimeError。"""
     import io
 
     import pytesseract
@@ -147,31 +184,52 @@ def _ocr_image_bytes(data: bytes, *, langs: str = "eng") -> tuple[str, str]:
 
     pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
     img = Image.open(io.BytesIO(data))
-    # 过大时缩放以加速
     max_w = 1800
     if img.width > max_w:
         ratio = max_w / img.width
         img = img.resize((max_w, int(img.height * ratio)))
-    # 尝试多语言
-    candidates = [langs, "eng", "osd"]
+    lang_seq = ocr_lang_candidates(page_lang or "en")
+    if langs:
+        lang_seq = [langs] + [x for x in lang_seq if x != langs]
+    # 已安装语言过滤
+    try:
+        installed = set(pytesseract.get_languages(config=""))
+    except Exception:
+        installed = {"eng", "osd"}
     last_err = ""
-    for lang in candidates:
+    best_text = ""
+    best_lang = ""
+    for lang in lang_seq:
+        parts = [p for p in re.split(r"[+]", lang) if p in installed or p == "osd"]
+        if not parts:
+            # 尝试组合中至少 eng
+            if "eng" in installed:
+                parts = ["eng"]
+            else:
+                continue
+        use = "+".join(parts)
         try:
-            text = pytesseract.image_to_string(img, lang=lang)
+            text = pytesseract.image_to_string(img, lang=use)
             if text and text.strip():
-                return text, f"tesseract:{lang}"
+                # 优先能解析出日期的语言包结果
+                if _DATE_RANGE.search(text) or _DATE_RANGE_SLASH.search(text):
+                    return text, f"tesseract:{use}"
+                if len(text) > len(best_text):
+                    best_text, best_lang = text, use
         except Exception as exc:
             last_err = str(exc)
+    if best_text:
+        return best_text, f"tesseract:{best_lang}"
     raise RuntimeError(f"ocr_failed:{last_err}")
 
 
-def _ocr_image_url(url: str, *, timeout: float = 40.0) -> tuple[str, str]:
+def _ocr_image_url(url: str, *, timeout: float = 40.0, page_lang: str | None = None) -> tuple[str, str]:
     import httpx
 
     headers = {"User-Agent": "FlightHunter-Bot/1.0 (evidence extract)"}
     r = httpx.get(url, headers=headers, timeout=timeout, follow_redirects=True)
     r.raise_for_status()
-    return _ocr_image_bytes(r.content)
+    return _ocr_image_bytes(r.content, page_lang=page_lang)
 
 
 def _parse_date_flexible(s: str) -> datetime | None:
@@ -310,6 +368,7 @@ async def extract_official_evidence(
     from bs4 import BeautifulSoup
 
     text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
+    page_lang = detect_text_lang(html + "\n" + text[:500])
     html_items = parse_rules_from_text(text, source_url=page_url, locator="body_text", method="html_text", confidence="medium")
     out.evidence.extend(html_items)
     out.assets = discover_page_assets(html, page_url)
@@ -321,9 +380,9 @@ async def extract_official_evidence(
         try:
             if fetch_bytes is not None:
                 data = await fetch_bytes(asset["url"])
-                ocr_text, method = _ocr_image_bytes(data)
+                ocr_text, method = _ocr_image_bytes(data, page_lang=page_lang)
             else:
-                ocr_text, method = _ocr_image_url(asset["url"])
+                ocr_text, method = _ocr_image_url(asset["url"], page_lang=page_lang)
             out.ocr_text_sample = (out.ocr_text_sample or "") + "\n" + ocr_text[:2000]
             items = parse_rules_from_text(
                 ocr_text,
@@ -332,11 +391,15 @@ async def extract_official_evidence(
                 method=f"image_ocr:{method}",
                 confidence="medium",
             )
-            # OCR 日期通常更可信（海报专载活动时间）
+            # 仅当 OCR 能解析出完整日期区间才升为 high；否则保持 medium/low
             for it in items:
                 if it.field_path in {"opens", "closes", "entry_period"}:
-                    it.confidence = "high"
-                    it.notes.append("from_poster_ocr")
+                    if it.value and re.search(r"20\d{2}", it.value or ""):
+                        it.confidence = "high"
+                        it.notes.append("from_poster_ocr_date_pattern")
+                    else:
+                        it.confidence = "medium"
+                        it.notes.append("ocr_partial")
             out.evidence.extend(items)
             ocr_notes.append(f"ocr_ok:{asset['locator']}")
         except Exception as exc:

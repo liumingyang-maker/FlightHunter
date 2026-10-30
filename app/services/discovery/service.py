@@ -833,4 +833,30 @@ async def run_discovery(
                     "trips": len(trips),
                 }
             )
+        if module in ("raffle", "all"):
+            # 无人值守：发现后自动核验证据/开放状态/报名入口（低频）
+            from app.services.raffle.auto_verify import auto_verify_pending_rounds
+
+            try:
+                verify_results = await auto_verify_pending_rounds(session, settings, limit=5)
+                out.append(
+                    {
+                        "source_id": None,
+                        "status": "post_raffle_auto_verify",
+                        "verified": sum(1 for r in verify_results if r.get("ok")),
+                        "failed": sum(1 for r in verify_results if not r.get("ok")),
+                        "steps": verify_results,
+                    }
+                )
+            except Exception as exc:
+                out.append(
+                    {
+                        "source_id": None,
+                        "status": "post_raffle_auto_verify",
+                        "verified": 0,
+                        "failed": 1,
+                        "error": type(exc).__name__,
+                        "message": str(exc)[:200],
+                    }
+                )
     return out
