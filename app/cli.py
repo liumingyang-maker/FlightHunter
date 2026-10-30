@@ -529,6 +529,48 @@ def raffle_provenance(
     engine.dispose()
 
 
+@app.command("raffle-rules-check")
+def raffle_rules_check(
+    url: str = typer.Argument(..., help="已知官方活动页 URL（只读核验，不自动报名）"),
+    config: str | None = typer.Option(None, "--config"),
+) -> None:
+    """第二步：已知官方目标回归 — 只读抓取并解析官方规则；不写入候选冒充自主发现。"""
+    import asyncio
+    import json as _json
+
+    settings = load_settings(config, project_root=_project_root())
+    from app.adapters.html_fetcher import HttpxFetchAdapter
+    from app.core.url_safety import assert_public_http_url
+    from app.services.raffle.official_rules import (
+        eligibility_unknown_profile,
+        parse_official_rules_html,
+    )
+
+    assert_public_http_url(url)
+    adapter = HttpxFetchAdapter(settings)
+
+    async def _run():
+        return await adapter.fetch(url)
+
+    result = asyncio.run(_run())
+    if not result.ok:
+        console.print(f"[red]页面读取失败: {result.error_code} {result.message}[/red]")
+        raise typer.Exit(1)
+    parse = parse_official_rules_html(
+        result.text or "",
+        page_url=result.final_url or url,
+        expected_official_hosts=("visitkorea.or.kr", "knto.or.kr"),
+    )
+    payload = {
+        "page_fetched": True,
+        "final_url": result.final_url,
+        "rules": parse.to_dict(),
+        "eligibility_without_profile": eligibility_unknown_profile(parse),
+        "note": "页面读取成功 ≠ 活动仍有效 ≠ 用户 eligible；不自动提交报名",
+    }
+    console.print_json(_json.dumps(payload, ensure_ascii=False, default=str))
+
+
 @app.command("jp-benefits-scan")
 def jp_benefits_scan(
     config: str | None = typer.Option(None, "--config"),

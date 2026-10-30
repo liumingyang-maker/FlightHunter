@@ -210,13 +210,22 @@ class HttpxFetchAdapter(SourceAdapter):
     def parse_raffle(self, text: str, *, url: str) -> list[ParsedSignal]:
         soup = BeautifulSoup(text, "html.parser")
         signals: list[ParsedSignal] = []
-        for a in soup.find_all("a", href=True)[:200]:
+        for a in soup.find_all("a", href=True)[:300]:
             label = a.get_text(" ", strip=True)
-            href = urljoin(url, a["href"])
+            href_raw = a["href"] or ""
+            if href_raw.lower().startswith("javascript:"):
+                m = re.search(r"['\"](/[^'\"]+)['\"]", href_raw)
+                if not m:
+                    continue
+                href = urljoin(url, m.group(1))
+            else:
+                href = urljoin(url, href_raw)
+            if not href.startswith("http"):
+                continue
             sig = parse_raffle_label(label, page_url=href)
             if sig:
                 signals.append(sig)
-            if len(signals) >= 30:
+            if len(signals) >= 40:
                 break
         return signals
 
@@ -453,12 +462,12 @@ def parse_raffle_label(label: str, *, page_url: str) -> ParsedSignal | None:
         k in low for k in ("flight", "airfare", "机票")
     ):
         types = ["prize_other"]  # 车辆/现金等非免费机票
-    elif any(k in low for k in ("cash", "$", "usd", "prize money", "现金")) and not any(
-        k in low for k in ("trip", "vacation", "flight", "airfare", "hotel", "cruise")
-    ):
-        types = ["prize_other"]
-    elif any(k in low for k in ("boat", "lund", "fishing", "yacht", "船", "游艇")) and not any(
-        k in low for k in ("flight", "airfare", "机票", "round-trip", "roundtrip")
+    elif (
+        any(k in low for k in ("cash", "$", "usd", "prize money", "现金"))
+        and not any(k in low for k in ("trip", "vacation", "flight", "airfare", "hotel", "cruise"))
+    ) or (
+        any(k in low for k in ("boat", "lund", "fishing", "yacht", "船", "游艇"))
+        and not any(k in low for k in ("flight", "airfare", "机票", "round-trip", "roundtrip"))
     ):
         types = ["prize_other"]
     elif any(k in low for k in ("hotel", "cruise", "resort", "邮轮", "酒店")) and not any(

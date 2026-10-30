@@ -25,6 +25,95 @@ from app.models import (
 )
 
 
+def discover_official_tourism_events(
+    session: Session,
+    source: Source,
+    html: str,
+    *,
+    page_url: str,
+    limit: int = 20,
+) -> list[ParsedSignal]:
+    """官方旅游局站：从页面中的 AJAX 列表端点发现真实活动（不注入具体活动 URL）。"""
+    import re
+    from urllib.parse import urljoin, urlparse
+
+    import httpx
+
+    from app.core.url_safety import assert_public_http_url
+
+    m = re.search(r"['\"](/svc/[^'\"]*getContentsList\.do[^'\"]*)['\"]", html, re.I)
+    if not m:
+        # 也可从路径约定推断
+        if "visitkorea.or.kr" not in (urlparse(page_url).hostname or ""):
+            return []
+        list_path = "/svc/contents/getContentsList.do?menuSn=654"
+    else:
+        list_path = m.group(1)
+    base = f"{urlparse(page_url).scheme}://{urlparse(page_url).netloc}"
+    list_url = urljoin(base, list_path)
+    # 保证 menuSn
+    if "menuSn=" not in list_url:
+        list_url = list_url + ("&" if "?" in list_url else "?") + "menuSn=654"
+    assert_public_http_url(list_url)
+
+    signals: list[ParsedSignal] = []
+    try:
+        headers = {
+            "User-Agent": "FlightHunter-Bot/1.0 (local live research)",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": page_url,
+        }
+        for page in range(1, 4):
+            u = list_url if page == 1 else (list_url + ("&" if "?" in list_url else "?") + f"page={page}")
+            resp = httpx.get(u, headers=headers, timeout=20, follow_redirects=True)
+            if resp.status_code != 200:
+                break
+            data = resp.json()
+            items = (data.get("data") or {}).get("contents") or []
+            if not items:
+                break
+            for it in items:
+                title = (it.get("contsTtl") or "").strip()
+                if not title:
+                    continue
+                low = title.lower()
+                if not any(
+                    k in low
+                    for k in (
+                        "flight",
+                        "round-trip",
+                        "roundtrip",
+                        "air ticket",
+                        "survey",
+                        "quiz",
+                        "giveaway",
+                        "win ",
+                        "prize",
+                        "food",
+                    )
+                ):
+                    continue
+                vid = it.get("vcontsId")
+                detail = f"{base}/svc/contents/contentsView.do?vcontsId={vid}" if vid else list_url
+                period = it.get("evtPeriod") or ""
+                ended = str(it.get("endYn") or "").upper() == "Y"
+                raw = f"{title} | period={period} | ended={ended} | vcontsId={vid}"
+                signals.append(
+                    ParsedSignal(
+                        title=title[:200],
+                        raw_claim_text=raw,
+                        url=detail,
+                        deal_types=["flight_giveaway"] if re.search(r"flight|round[\s-]?trip|air ticket", low) else ["survey_event"],
+                        confidence="low",
+                    )
+                )
+                if len(signals) >= limit:
+                    return signals
+    except Exception:
+        return signals
+    return signals
+
+
 def adapter_for(source: Source, settings: Settings) -> SourceAdapter | None:
     if source.allowed_fetch_mode == "rss":
         return RssAdapter(settings)
@@ -317,6 +406,21 @@ def materialize_raffle_candidates(
             continue
         is_aggregator = source.kind in ("community", "search_api")
         official = None if is_aggregator else (s.url or candidate_url or source.base_url)
+        # 官方旅游局站点同域活动链接：可写 official_url（仍保持 candidate，不自动 verified）
+        if source.kind == "official_tourism_board" and s.url:
+            try:
+                from urllib.parse import urlparse
+
+                from app.core.url_safety import assert_public_http_url
+
+                assert_public_http_url(s.url)
+                src_host = (urlparse(source.base_url).hostname or "").lower().removeprefix("www.")
+                link_host = (urlparse(s.url).hostname or "").lower().removeprefix("www.")
+                if src_host and link_host and (link_host == src_host or link_host.endswith("." + src_host)):
+                    official = s.url
+                    is_aggregator = False
+            except Exception:
+                pass
         round_ = CampaignRound(
             id=new_id(),
             campaign_id=camp.id,
@@ -437,6 +541,16 @@ async def fetch_source(
             parsed = adapter.parse_trip(result.text, url=parse_base)[:20]  # type: ignore[attr-defined]
         elif effective_module == "raffle" and hasattr(adapter, "parse_raffle"):
             parsed = adapter.parse_raffle(result.text, url=parse_base)[:20]  # type: ignore[attr-defined]
+            if source.kind == "official_tourism_board":
+                extra = discover_official_tourism_events(
+                    session, source, result.text or "", page_url=parse_base
+                )
+                seen = {p.title for p in parsed}
+                for e in extra:
+                    if e.title not in seen:
+                        parsed.append(e)
+                        seen.add(e.title)
+                parsed = parsed[:20]
         else:
             parsed = adapter.parse(result.text, url=parse_base)[:20]
 

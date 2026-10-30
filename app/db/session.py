@@ -209,6 +209,29 @@ def ensure_default_sources(session: Session, settings: Settings) -> list[Source]
             "module": "trip",
             "notes": "免费博物馆集合页；仅免费入场信息，非已领券",
         },
+        # 官方旅游局站点（非具体活动 URL）— 自主发现入口
+        {
+            "name": "VISITKOREA EN 首页",
+            "base_url": "https://english.visitkorea.or.kr/",
+            "kind": "official_tourism_board",
+            "language": "en",
+            "country_code": "KR",
+            "access_policy": "public_fetch",
+            "allowed_fetch_mode": "httpx",
+            "module": "raffle",
+            "notes": "韩国旅游发展局英文站首页；活动链接自动发现，非注入具体活动URL",
+        },
+        {
+            "name": "Japan National Tourism Org",
+            "base_url": "https://www.japan.travel/en/",
+            "kind": "official_tourism_board",
+            "language": "en",
+            "country_code": "JP",
+            "access_policy": "public_fetch",
+            "allowed_fetch_mode": "httpx",
+            "module": "raffle",
+            "notes": "日本国家旅游局；全球旅行抽奖/活动入口",
+        },
     ]
     for item in defaults:
         existing = session.scalar(select(Source).where(Source.base_url == item["base_url"]))
