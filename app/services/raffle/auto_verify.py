@@ -77,6 +77,25 @@ def _needs_verify(r: CampaignRound, now: datetime) -> bool:
     return True
 
 
+def _build_zh_guide(ext, tags: dict, entry_url: str | None) -> str:
+    lines = ["【中文参加说明（自动整理）】"]
+    lines.append("1. 打开官方详情页，确认海报/正文中活动时间。")
+    if ext.opens_raw or ext.closes_raw:
+        lines.append(f"2. 活动期：{ext.opens_raw or '?'} ~ {ext.closes_raw or '?'}")
+    else:
+        lines.append("2. 活动期：页面未结构化解析到，请以官方海报为准。")
+    if ext.prize_is_flight:
+        lines.append("3. 奖品含往返机票；是否适用于中国内地出发/往返 **未确认**（unknown_origin_pending）。")
+    lines.append("4. 报名入口：" + (entry_url or "页面内/海报「参加活动」") + "；需登录/同意隐私时请自行完成，系统不代提交。")
+    if ext.residency_text:
+        lines.append(f"5. 资格提示：{ext.residency_text}；无真实国籍/居住档案时保持 unknown。")
+    else:
+        lines.append("5. 资格：未完整解析；无档案不得假设 eligible。")
+    lines.append("6. 中奖后可能需提供护照等信息；请仅在官方页填写。")
+    lines.append("注意：开放日期 ≠ 用户有资格；本说明不构成已报名。")
+    return "\n".join(lines)
+
+
 async def probe_entry_url(url: str, *, timeout: float = 20.0) -> dict[str, Any]:
     """只读探测报名/活动入口；不登录、不提交。"""
     import httpx
@@ -358,6 +377,12 @@ async def verify_round_auto(
             "prize_is_flight": auto_extract.get("prize_is_flight"),
             "entry_channel": ext.entry_channel,
             "guide_zh": True,
+            "china_outbound_relevance": (
+                "unknown_origin_pending"
+                if auto_extract.get("prize_is_flight")
+                else tags.get("china_outbound_relevance")
+            ),
+            "guide_zh_content": _build_zh_guide(ext, tags, entry_url),
         }
     )
     # open_status 写入便于 API

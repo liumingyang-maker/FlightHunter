@@ -161,7 +161,7 @@ _CN_CITY_TO_IATA = {
     "无锡": "WUX",
     "珠海": "ZUH",
     "海口": "HAK",
-    "银川": "INC",  # 国内
+    "银川": "INC",
     "西宁": "XNN",
     "兰州": "LHW",
     "乌鲁木齐": "URC",
@@ -180,18 +180,126 @@ _CN_CITY_TO_IATA = {
     "合肥": "HFE",
     "南昌": "KHN",
     "长春": "CGQ",
+    "北上广": "MULTI",  # 占位多城
+}
+
+_DEST_CITY = {
+    "东京": "NRT",
+    "大阪": "KIX",
+    "名古屋": "NGO",
+    "冲绳": "OKA",
+    "首尔": "ICN",
+    "釜山": "PUS",
+    "曼谷": "BKK",
+    "普吉": "HKT",
+    "清迈": "CNX",
+    "吉隆坡": "KUL",
+    "新加坡": "SIN",
+    "巴厘岛": "DPS",
+    "河内": "HAN",
+    "胡志明": "SGN",
+    "香港": "HKG",
+    "台北": "TPE",
+    "澳门": "MFM",
+    "赫尔辛基": "HEL",
+    "伦敦": "LHR",
+    "巴黎": "CDG",
+    "法兰克福": "FRA",
+    "阿姆斯特丹": "AMS",
+    "洛杉矶": "LAX",
+    "旧金山": "SFO",
+    "纽约": "JFK",
+    "温哥华": "YVR",
+    "悉尼": "SYD",
+    "墨尔本": "MEL",
+    "奥克兰": "AKL",
+    "迪拜": "DXB",
+    "伊斯坦布尔": "IST",
+    "贝尔格莱德": "BEG",
+}
+
+_AIRLINE_HINTS = {
+    "国航": "Air China",
+    "中国国际航空": "Air China",
+    "东航": "China Eastern",
+    "中国东方": "China Eastern",
+    "南航": "China Southern",
+    "中国南方": "China Southern",
+    "海航": "Hainan Airlines",
+    "海南航空": "Hainan Airlines",
+    "川航": "Sichuan Airlines",
+    "四川航空": "Sichuan Airlines",
+    "厦航": "Xiamen Airlines",
+    "首都航空": "Capital Airlines",
+    "春秋": "Spring Airlines",
+    "吉祥": "Juneyao Airlines",
+    "全日空": "ANA",
+    "ANA": "ANA",
+    "日航": "JAL",
+    "JAL": "JAL",
+    "大韩": "Korean Air",
+    "韩亚": "Asiana",
+    "新加坡航空": "Singapore Airlines",
+    "国泰": "Cathay Pacific",
+    "阿联酋": "Emirates",
+    "阿提哈德": "Etihad",
+    "卡塔尔": "Qatar Airways",
+    "美联": "United",
+    "达美": "Delta",
+    "美国航空": "American Airlines",
+    "加拿大航空": "Air Canada",
 }
 
 
+def extract_origin_iatas_from_title(title: str) -> list[str]:
+    """提取标题中出现的全部中国出发城市 IATA（去重保序）。"""
+    found: list[str] = []
+    for city, iata in _CN_CITY_TO_IATA.items():
+        if city == "北上广":
+            for x in ("PEK", "PVG", "CAN"):
+                if x not in found:
+                    found.append(x)
+            continue
+        if city in (title or "") and iata not in found:
+            found.append(iata)
+    return found
+
+
+def extract_dest_iata(title: str) -> str | None:
+    for city, iata in _DEST_CITY.items():
+        if city in (title or ""):
+            return iata
+    return None
+
+
+def extract_airline(title: str) -> str | None:
+    t = title or ""
+    for k, v in _AIRLINE_HINTS.items():
+        if k in t:
+            return v
+    return None
+
+
 def _maybe_fill_origin_from_title(signal: FareDealSignal) -> None:
-    """从标题提取中国出发城市 IATA；仅在无 origin 时填充。"""
+    """从标题提取出发城市；优先填 origin_airport（首个），另存全部到 tags 不可用时仅 DB 字段。"""
     if signal.origin_airport:
         return
-    title = signal.title or ""
-    for city, iata in _CN_CITY_TO_IATA.items():
-        if city in title:
-            signal.origin_airport = iata
-            return
+    iatas = extract_origin_iatas_from_title(signal.title or "")
+    if iatas:
+        # 多城时优先用户常用 CKG/TFU
+        for pref in ("CKG", "TFU", "CTU"):
+            if pref in iatas:
+                signal.origin_airport = pref
+                return
+        signal.origin_airport = iatas[0]
+    if not signal.destination_airport:
+        d = extract_dest_iata(signal.title or "")
+        if d:
+            signal.destination_airport = d
+    if not signal.airline:
+        a = extract_airline(signal.title or "")
+        if a:
+            signal.airline = a[:120]
 
 
 _NOISE_INTEL = (
@@ -258,43 +366,95 @@ def build_intel_view(
         ):
             continue
         _maybe_fill_origin_from_title(s)
-        intl = None
-        if s.origin_airport and s.destination_airport:
-            from app.services.airports.china import is_international_pair
+        title = s.title or ""
+        all_origins = extract_origin_iatas_from_title(title)
+        if s.origin_airport and s.origin_airport.upper() not in all_origins:
+            all_origins = [s.origin_airport.upper(), *all_origins]
+        # 目的/航司补全
+        if not s.destination_airport:
+            s.destination_airport = extract_dest_iata(title)
+            # 国内目的地城市名（如银川）→ 填 IATA 便于国际过滤
+            if not s.destination_airport:
+                for city, iata in _CN_CITY_TO_IATA.items():
+                    if city in title and city not in ("北上广",) and city != "成都":
+                        # 启发式：目的地在最后一个“-”之后
+                        parts = re.split(r"[-—–至到]", title)
+                        if len(parts) >= 2 and city in parts[-1]:
+                            s.destination_airport = iata
+                            break
+        if not s.airline:
+            s.airline = extract_airline(title)
 
-            intl = is_international_pair(s.origin_airport, s.destination_airport)
-            if filt.exclude_domestic and intl is False:
+        # 国际判定：任一出发地→目的地为国际；或全国促销无机场
+        from app.services.airports.china import is_international_pair
+
+        intl = None
+        for o in all_origins or ([s.origin_airport] if s.origin_airport else []):
+            pair = is_international_pair(o, s.destination_airport) if o else None
+            if pair is True:
+                intl = True
+                break
+            if pair is False and filt.exclude_domestic:
+                # 若标题还有其他国际目的地线索则保留
+                if not s.destination_airport:
+                    continue
+        if filt.exclude_domestic and s.destination_airport:
+            from app.services.airports.china import is_china_mainland_airport
+
+            if is_china_mainland_airport(s.destination_airport):
                 continue
+        if filt.exclude_domestic and intl is False and s.destination_airport:
+            continue
+
         cat = classify_signal(s)
         if filt.categories and cat not in filt.categories:
             continue
-        match = match_signal_origins(
-            s.origin_airport,
-            filt.preferred_origins,
-            signal_dest=s.destination_airport,
-            require_international=filt.exclude_domestic,
-        )
-        # 无机场但标题像国际机票：保留为可能匹配
-        if not s.origin_airport and not match.get("match"):
-            continue
-        if not match.get("match") and s.origin_airport:
-            continue
-        # 明确支持该城市：标题含城市名且 origin 匹配，或 origin 精确
-        # 多城市/全国：origin 为空但标题含「全国/多地」或匹配 preferred 中任一城市中文名
-        city_match_level = "origin_unknown"
-        title = s.title or ""
-        if s.origin_airport and s.origin_airport.upper() in filt.preferred_origins:
-            city_match_level = "explicit_city"
-        elif not s.origin_airport and any(
+
+        # 匹配：标题中任一 preferred 城市 OR origin 精确 OR 全国/多城待核实 OR 无机场全国促销
+        preferred = {x.upper() for x in (filt.preferred_origins or [])}
+        pref_in_title = [x for x in all_origins if x in preferred]
+        national = any(
             k in title
-            for k in ("全国", "多地", "北上广", "全国多地", "China-wide", "nationwide")
-        ):
+            for k in ("全国", "多地", "北上广", "全国多地", "China-wide", "nationwide", "全国多城")
+        )
+        if pref_in_title:
+            city_match_level = "explicit_city"
+            match = {"match": True, "reason": "preferred_city_in_title", "international": intl}
+        elif all_origins and not pref_in_title and preferred:
+            # 有明确出发城市但不含偏好城市 → 不匹配
+            if not national:
+                continue
             city_match_level = "national_multi_city_pending"
-        elif not s.origin_airport and any(
-            c in title
-            for c in ("重庆", "成都", "上海", "北京", "广州", "深圳", "杭州", "武汉", "昆明")
-        ):
-            city_match_level = "city_named_in_title_pending_iata"
+            match = {"match": True, "reason": "national_overrides_specific_other_city", "international": intl}
+        elif national and preferred:
+            city_match_level = "national_multi_city_pending"
+            match = {"match": True, "reason": "national_multi_pending", "international": intl}
+        elif not all_origins and not s.origin_airport:
+            # 无机场：可能全国促销
+            if national or not preferred:
+                city_match_level = "national_multi_city_pending" if national else "origin_unknown"
+                match = {"match": True, "reason": "unknown_origin_keep", "international": intl}
+            else:
+                # 默认偏好下无城市信息：保留为 origin_unknown 展示但降权
+                city_match_level = "origin_unknown"
+                match = {"match": True, "reason": "no_origin_show_low_priority", "international": intl}
+        else:
+            # origin 存在但未匹配 preferred 且非全国
+            m2 = match_signal_origins(
+                s.origin_airport,
+                filt.preferred_origins,
+                signal_dest=s.destination_airport,
+                require_international=filt.exclude_domestic,
+            )
+            if not m2.get("match"):
+                continue
+            city_match_level = (
+                "explicit_city" if s.origin_airport.upper() in preferred else "origin_unknown"
+            )
+            match = m2
+
+        if not match.get("match"):
+            continue
         age_score = 0
         if s.published_at_utc:
             pub = s.published_at_utc
@@ -306,8 +466,10 @@ def build_intel_view(
             priority -= 50
         if cat == "fuel_anomaly":
             priority -= 30
-        if match.get("reason") == "exact_iata":
-            priority -= 20
+        if match.get("reason") in {"exact_iata", "preferred_city_in_title"} or city_match_level == "explicit_city":
+            priority -= 30
+        if city_match_level == "national_multi_city_pending":
+            priority -= 10
         if s.reported_total:
             priority -= 5
         priority += age_score * 2
