@@ -1,6 +1,6 @@
 # FlightHunter · 亚洲来源 + 全球错价 + 四频道验收
 
-- **HEAD：** 见文末（开发中更新）  
+- **HEAD：** ff0bd07  
 - **基线：** `37292ed` 为祖先；未回退业务价值结论  
 - **备份：** `backups/*_133247.bundle` · daily DB copy  
 - **Worker：** 单实例锁仍 alive；观察 started_utc **未重置**  
@@ -63,3 +63,4 @@ Playwright：`data/daily_usage/ui4/ch_*.png` · `ch_mobile.png`（4 个 tab 移�
 | 无付费 AI 可运行？ | **是** |
 
 Git：`develop` @（见 commit）· 未 push · 未合并 main。
+
