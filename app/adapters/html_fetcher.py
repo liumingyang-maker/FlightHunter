@@ -197,10 +197,39 @@ class HttpxFetchAdapter(SourceAdapter):
     def parse(self, text: str, *, url: str) -> list[ParsedSignal]:
         soup = BeautifulSoup(text, "html.parser")
         signals: list[ParsedSignal] = []
-        for a in soup.find_all("a", href=True)[:200]:
+        for a in soup.find_all("a", href=True)[:400]:
             label = a.get_text(" ", strip=True)
-            href = urljoin(url, a["href"])
+            href_raw = a["href"] or ""
+            if href_raw.lower().startswith("javascript:"):
+                m = re.search(r"https?://[^'\"]+|['\"](/[^'\"]+)['\"]", href_raw)
+                if not m:
+                    continue
+                href = m.group(0) if m.group(0).startswith("http") else urljoin(url, m.group(1))
+            else:
+                href = urljoin(url, href_raw)
             sig = parse_deal_label(label, page_url=href)
+            if not sig and "/blog/" in href and any(
+                k in label for k in ("機票", "机票", "優惠", "优惠", "促銷", "促销", "Peach", "國泰", "HK Express")
+            ):
+                # 香港优惠站列表：标签含关键词但价格/结构化不足时仍作线索
+                from app.adapters.base import ParsedSignal
+
+                price = None
+                m_hkd = re.search(r"HK\$?\s*(\d[\d,]*)", label, re.I)
+                if m_hkd:
+                    try:
+                        price = float(m_hkd.group(1).replace(",", ""))
+                    except ValueError:
+                        price = None
+                sig = ParsedSignal(
+                    title=label[:200],
+                    raw_claim_text=label,
+                    url=href if href.startswith("http") else None,
+                    reported_total=price,
+                    currency="HKD" if price else None,
+                    deal_types=["flash_sale"],
+                    confidence="low",
+                )
             if sig:
                 signals.append(sig)
             if len(signals) >= 50:
@@ -265,7 +294,20 @@ class HttpxFetchAdapter(SourceAdapter):
 
 _IATA_RE = re.compile(r"\b([A-Z]{3})\b")
 _PRICE_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*元")
-_FARE_KW = ("机票", "flight", "airfare", "特价机票", "往返", "单程")
+_FARE_KW = (
+    "机票",
+    "flight",
+    "airfare",
+    "特价机票",
+    "往返",
+    "单程",
+    "機票",
+    "來回",
+    "来回",
+    "連稅",
+    "含税",
+    "promotion",
+)
 _DEAL_KW = ("元", "BUG", "错价", "神价", "特价", "促销", "甩尾", "漏油", "尾单")
 _TRIP_KW = (
     "券",
@@ -367,24 +409,36 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
     origin = codes[0] if len(codes) >= 2 else None
     dest = codes[1] if len(codes) >= 2 else None
     price = None
+    currency = None
     m = _PRICE_RE.search(label)
     if m:
         try:
             price = float(m.group(1).replace(",", ""))
+            currency = "CNY"
         except ValueError:
             price = None
     if price is None:
-        m_yen = re.search(r"¥\s*(\d[\d,]*)", label)
+        m_yen = re.search(r"[¥]\s*(\d[\d,]*)", label)
         if m_yen:
             try:
                 price = float(m_yen.group(1).replace(",", ""))
+                currency = "CNY"
             except ValueError:
                 price = None
     if price is None:
-        m_k = re.search(r"(\d+(?:\.\d+)?)\s*[Kk千]", label)
+        m_hkd = re.search(r"HK\$?\s*(\d[\d,]*)", label, re.I)
+        if m_hkd:
+            try:
+                price = float(m_hkd.group(1).replace(",", ""))
+                currency = "HKD"
+            except ValueError:
+                price = None
+    if price is None:
+        m_k = re.search(r"(\d+(?:\.\d+)?)\s*[Kk千](?!\s*g)", label)
         if m_k and has_flight_kw:
             try:
                 price = float(m_k.group(1)) * 1000
+                currency = "CNY"
             except ValueError:
                 price = None
     # 仍需机票语义或双 IATA；金额/促销词再降噪
@@ -403,7 +457,7 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
         raw_claim_text=label,
         url=page_url if page_url.startswith("http") else None,
         reported_total=price,
-        currency="CNY" if price is not None else None,
+        currency=currency,
         origin_airport=origin,
         destination_airport=dest,
         deal_types=types,

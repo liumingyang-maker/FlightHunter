@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from app.services.airports.china import (
@@ -56,17 +57,20 @@ def is_premium_cabin_deal(item: dict[str, Any]) -> bool:
 
 
 def origin_region(item: dict[str, Any]) -> str:
+    """按出发机场判断；标题出现「香港/澳门」≠港澳出发。"""
     o = (item.get("origin_airport") or "").upper()
     if is_hk_mo_airport(o):
         return "hk_mo"
     if is_china_mainland_airport(o):
         return "china_mainland"
-    if not o:
-        title = item.get("title") or ""
-        if any(k in title for k in ("香港", "澳门", "HKG", "MFM", "Hong Kong", "Macau")):
+    title = item.get("title") or ""
+    # 仅当明确「香港/澳门出发 / from HKG / 來回」且非以上海等为出发时，才可能港澳
+    # 优先：HKG/MFM 作为出发词
+    if re.search(r"(香港|澳门|HKG|MFM|Hong\s*Kong|Macau|Macao).{0,12}(出发|出发|→|->|來回|往返|from)", title, re.I):
+        if not re.search(r"(上海|北京|广州|深圳|成都|重庆|PVG|PEK|CAN|CKG|TFU).{0,8}(→|->|至|到|飞)", title, re.I):
             return "hk_mo"
-        if any(k in title for k in ("全国", "多地", "中国", "China-wide")):
-            return "china_mainland"
+    if not o and any(k in title for k in ("全国", "多地", "中国", "China-wide")):
+        return "china_mainland"
     return "global"
 
 
@@ -101,10 +105,8 @@ def route_channels(item: dict[str, Any], preferred: list[str]) -> list[str]:
     ):
         if not (is_hk_mo_airport(o) if o else False):
             chans.append("china_mainland")
-    # 频道 C：港澳
-    if region == "hk_mo" or (o and is_hk_mo_airport(o)) or any(
-        k in title for k in ("香港", "澳门", "HKG", "MFM", "Hong Kong", "Macau", "HongKong")
-    ):
+    # 频道 C：港澳 — 仅出发地；标题含香港目的地/航司不自动计入
+    if region == "hk_mo" or (o and is_hk_mo_airport(o)):
         chans.append("hk_mo")
     # 去重保序
     seen: set[str] = set()
