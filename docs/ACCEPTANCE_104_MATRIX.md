@@ -74,7 +74,7 @@
 | T67 | 安全 | 169.254.169.254 拒绝 | 中立审计/单测 | PASS | 同上 169.254 |
 | T68 | 安全 | 数字 IP 别名拒绝 | 中立审计/单测 | PASS | test_p0_browser_safety.py 数字别名 |
 | T69 | 安全 | 共享地址 100.64 拒绝 | 中立审计/单测 | PASS | test_p0_browser_safety.py::test_shared_address_space_blocked |
-| T70 | 安全 | 公开→私网重定向拒绝且无请求 | 中立审计/单测 | PASS | test_neutral_audit.py::test_safe_get_no_follow_to_private |
+| T70 | 安全 | 公开→私网重定向拒绝且无请求 | 中立审计/单测 | PASS | test_neutral_audit.py + net_fault_inject_test.py |
 | T71 | 安全 | robots 403 fail-closed | 中立审计/单测 | PASS | test_codex_q1_q5.py::test_q1_robots_403_fail_closed |
 | T72 | 安全 | robots 429 fail-closed | 中立审计/单测 | NOT_TESTED | — |
 | T73 | 安全 | 流式超限拒绝 | 中立审计/单测 | PASS | test_q1_stream_too_large |

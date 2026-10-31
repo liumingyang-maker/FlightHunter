@@ -40,3 +40,17 @@
 ## 原始样本
 
 `data\daily_usage\logs\72h_smoke.jsonl`
+
+
+## 网络中断/恢复实验（2026-10-31T02:49Z）
+
+| 阶段 | 结果 | 说明 |
+|---|---|---|
+| before | 源计数 20 / success 7 / failed 9 | 基线 |
+| **blocked** | `fetch_ok=false`，`error=URL_NOT_PUBLIC` | socket 故障注入；DNS 失败 **fail-closed**（安全行为） |
+| **recovered** | `fetch_ok=true`，HTTP **200** | FlyNext 真实恢复 |
+
+- **方式：** 应用层 socket `getaddrinfo` 注入（远程无法物理断网；防火墙需管理员）
+- **非**物理拔网；向日葵保持连接
+- **代码：** `scripts/net_fault_inject_test.py`（可重复）
+- **日志：** `data/daily_usage/logs/net_sim_test.jsonl`
