@@ -39,7 +39,12 @@ class PublicAddressBackend(httpcore.AsyncNetworkBackend):
         self, host: str, port: int, timeout: float | None = None,
         local_address: str | None = None, socket_options: Any = None,
     ) -> httpcore.AsyncNetworkStream:
-        addresses = await asyncio.to_thread(resolve_and_assert_public_host, host)
+        try:
+            addresses = await asyncio.to_thread(resolve_and_assert_public_host, host)
+        except Exception as exc:
+            raise httpcore.ConnectError(f"address validation failed: {exc}") from exc
+        if not addresses:
+            raise httpcore.ConnectError("No validated public address available")
         last_error: Exception | None = None
         for address in addresses:
             try:
@@ -49,6 +54,12 @@ class PublicAddressBackend(httpcore.AsyncNetworkBackend):
                 )
             except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
                 last_error = exc
+            except TypeError as exc:
+                # 旧 httpcore 签名兼容：去掉可选参数重试一次
+                try:
+                    return await self._backend.connect_tcp(host=address, port=port)
+                except Exception as exc2:
+                    last_error = exc2
         if last_error:
             raise last_error
         raise httpcore.ConnectError("No validated public address available")

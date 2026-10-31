@@ -115,8 +115,11 @@ def test_network_backend_never_connects_when_dns_validation_fails(monkeypatch):
         raise ValueError("private address")
 
     monkeypatch.setattr("app.core.safe_http.resolve_and_assert_public_host", reject)
-    with pytest.raises(ValueError, match="private address"):
+    with pytest.raises(Exception) as excinfo:
         asyncio.run(backend_class(FakeBackend()).connect_tcp("example.com", 443))
+    # DNS 校验失败必须 fail-closed，不得连接
+    assert "private address" in str(excinfo.value) or "address validation" in str(excinfo.value)
+    assert not getattr(FakeBackend, "called", False)
     assert calls == []
 
 

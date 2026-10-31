@@ -46,7 +46,9 @@ class HttpxFetchAdapter(SourceAdapter):
             rp = robotparser.RobotFileParser()
             try:
                 async with client.stream("GET", f"{origin}/robots.txt", timeout=10) as resp:
-                    raw = await _read_body_limited(resp, ROBOTS_MAX_BYTES) if resp.status_code == 200 else None
+                    raw = None
+                    if resp.status_code == 200:
+                        raw = await _read_body_limited(resp, ROBOTS_MAX_BYTES)
                     if raw is not None:
                         rp.parse(raw.decode("utf-8", errors="replace").splitlines())
                         self._robots_cache[origin] = rp
@@ -57,7 +59,10 @@ class HttpxFetchAdapter(SourceAdapter):
         entry = self._robots_cache.get(origin)
         if entry is None:
             return False
-        return entry.can_fetch("*", url)
+        try:
+            return bool(entry.can_fetch("*", url))
+        except Exception:
+            return False
 
     async def fetch(self, url: str) -> FetchResult:
         try:
@@ -298,7 +303,15 @@ _PRICE_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*元")
 _FARE_KW = (
     "机票",
     "flight",
+    "flights",
     "airfare",
+    "fare deal",
+    "airfare deal",
+    "airline",
+    "airlines",
+    "travel deal",
+    "travel deals",
+    "award",
     "特价机票",
     "往返",
     "单程",
@@ -309,7 +322,24 @@ _FARE_KW = (
     "含税",
     "promotion",
 )
-_DEAL_KW = ("元", "BUG", "错价", "神价", "特价", "促销", "甩尾", "漏油", "尾单")
+_DEAL_KW = (
+    "元",
+    "BUG",
+    "错价",
+    "神价",
+    "特价",
+    "促销",
+    "甩尾",
+    "漏油",
+    "尾单",
+    "deal",
+    "deals",
+    "promo",
+    "sale",
+    "discount",
+    "offer",
+    "alert",
+)
 _TRIP_KW = (
     "券",
     "折扣",
@@ -408,8 +438,8 @@ def extract_route_price_candidates(label: str) -> list[dict[str, Any]]:
         return []
     out: list[dict[str, Any]] = []
     dest_pat = (
-        r"(大阪|东京|名古屋|冲绳|首尔|釜山|曼谷|普吉|清迈|吉隆坡|新加坡|巴厘岛|河内|胡志明|"
-        r"台北|台湾|台中|高雄|香港|澳门|上海|北京|成都|重庆|广州|深圳|杭州|武汉|昆明)"
+        r"(大阪|東京|东京|名古屋|冲绳|沖繩|首尔|首爾|釜山|曼谷|普吉|清迈|清邁|吉隆坡|新加坡|巴厘岛|河内|胡志明|"
+        r"台北|台湾|台灣|台中|高雄|香港|澳门|澳門|上海|北京|成都|重庆|廣州|广州|深圳|杭州|武汉|昆明)"
     )
     price_pat = r"(MOP\$?\s*|HK\$?\s*|¥\s*|RMB\s*|US\$?\s*)(\d[\d,]{2,})"
     # 就近绑定：每个价格只认「前方最近」且非出发语境的目的地
@@ -458,14 +488,10 @@ def extract_route_price_candidates(label: str) -> list[dict[str, Any]]:
     )
     if any("hong" in o.lower() or "kong" in o.lower() for o in origin_ctx):
         origin_ctx.add("香港")
-    dest_only = {d for d in dests if d not in origin_ctx}
-    if len(dest_only) >= 2:
-        bound = {c["dest_city"] for c in out}
-        if not dest_only.issubset(bound) or len(out) < len(dest_only):
-            return []
-        if len({c["amount"] for c in out}) > 1:
-            return out
-    # 单目的地不得把出发地当价绑定目标
+    # 仅当「有价绑定不足」时丢弃；東京大阪 等并列城市不应误杀
+    # 多金额交由调用方不写单一票价（R-004）
+    if len(out) >= 2:
+        return out
     out = [c for c in out if c["dest_city"] not in origin_ctx] or out
     return out
 
