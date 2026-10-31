@@ -338,15 +338,23 @@ def _parse_any_date(s: str) -> datetime | None:
     if not s:
         return None
     s = s.strip()
+
+    def _mk(y: str, mo: str, d: str) -> datetime | None:
+        try:
+            dt = datetime(int(y), int(mo), int(d))
+        except ValueError:
+            return None  # 非法日期不抛异常
+        return dt
+
     m = re.match(r"(20\d{2})年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日", s)
     if m:
-        return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        return _mk(m.group(1), m.group(2), m.group(3))
     m = re.match(r"(20\d{2})[./-](\d{1,2})[./-](\d{1,2})", s)
     if m:
-        return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        return _mk(m.group(1), m.group(2), m.group(3))
     m = re.match(r"(\d{1,2})[./-](\d{1,2})[./-](20\d{2})", s)
     if m:
-        return datetime(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+        return _mk(m.group(3), m.group(1), m.group(2))
     return None
 
 

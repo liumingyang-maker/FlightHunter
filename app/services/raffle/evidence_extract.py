@@ -246,12 +246,19 @@ def _parse_date_flexible(s: str) -> datetime | None:
     if not s:
         return None
     s = s.strip()
+
+    def _mk(y: str, mo: str, d: str) -> datetime | None:
+        try:
+            return datetime(int(y), int(mo), int(d))
+        except ValueError:
+            return None
+
     m = re.match(r"(\d{4})[./年-](\d{1,2})[./月-](\d{1,2})", s)
     if m:
-        return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        return _mk(m.group(1), m.group(2), m.group(3))
     m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
     if m:
-        return datetime(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+        return _mk(m.group(3), m.group(1), m.group(2))
     return None
 
 

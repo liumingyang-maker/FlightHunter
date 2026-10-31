@@ -389,12 +389,25 @@ async def verify_round_auto(
         evidence_text=(ext.prize_summary or "") + "\n" + (ext.residency_text or ""),
         prize_is_flight=auto_extract.get("prize_is_flight"),
         official_url=round_.official_url,
-        verify_status="auto_extracted",
+        verify_status="auto_extracted" if not ext.human_review_required else "candidate",
         source_kind=(tags.get("source_kind") or "official_page"),
     )
     tags["china_outbound_relevance"] = core["china_outbound"]
     tags["core_recommend"] = core["core_recommend"]
     tags["core_recommend_reasons"] = core["reasons"]
+    # 证据撤销/降级：需人工复核或冲突时强制非 core
+    if ext.human_review_required or ext.conflict_notes:
+        tags["core_recommend"] = False
+        tags["core_recommend_reasons"] = [
+            *core["reasons"],
+            "DEMOTED_HUMAN_REVIEW_OR_CONFLICT",
+        ]
+    if status in ("closed", "unknown"):
+        tags["core_recommend"] = False
+        tags["core_recommend_reasons"] = [
+            *tags.get("core_recommend_reasons", []),
+            "DEMOTED_NOT_OPEN",
+        ]
     # open_status 写入便于 API
     if status == "open":
         tags["active_now"] = True

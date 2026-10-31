@@ -99,6 +99,13 @@ _MONTHS = {
 }
 
 
+def _safe_dt(y: int, mo: int, d: int) -> datetime | None:
+    try:
+        return datetime(y, mo, d)
+    except ValueError:
+        return None
+
+
 def _parse_date_flexible(s: str | None, *, default_year: int = 2026) -> datetime | None:
     if not s:
         return None
@@ -106,10 +113,10 @@ def _parse_date_flexible(s: str | None, *, default_year: int = 2026) -> datetime
     # 2026-07-20 / 07/20/2026 / July 20, 2026 / July 20 – August 19, 2026 handled by caller split
     m = re.match(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})", s)
     if m:
-        return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        return _safe_dt(int(m.group(1)), int(m.group(2)), int(m.group(3)))
     m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
     if m:
-        return datetime(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+        return _safe_dt(int(m.group(3)), int(m.group(1)), int(m.group(2)))
     m = re.match(
         r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(\d{4})",
         s,
@@ -119,7 +126,7 @@ def _parse_date_flexible(s: str | None, *, default_year: int = 2026) -> datetime
         return datetime(int(m.group(3)), _MONTHS[m.group(1)[:3].lower()], int(m.group(2)))
     m = re.match(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})", s, re.I)
     if m:
-        return datetime(default_year, _MONTHS[m.group(1)[:3].lower()], int(m.group(2)))
+        return _safe_dt(default_year, _MONTHS[m.group(1)[:3].lower()], int(m.group(2)))
     return None
 
 
@@ -315,8 +322,11 @@ def parse_multi_round_event_html(
                 seg,
             )
             if pm:
-                opens = datetime(int(pm.group(1)), int(pm.group(2)), int(pm.group(3)))
-                closes = datetime(int(pm.group(4)), int(pm.group(5)), int(pm.group(6)))
+                try:
+                    opens = datetime(int(pm.group(1)), int(pm.group(2)), int(pm.group(3)))
+                    closes = datetime(int(pm.group(4)), int(pm.group(5)), int(pm.group(6)))
+                except ValueError:
+                    opens = closes = None
                 opens_raw = f"{pm.group(1)}.{pm.group(2)}.{pm.group(3)}"
                 closes_raw = f"{pm.group(4)}.{pm.group(5)}.{pm.group(6)}"
         active = _status_for_range(opens, closes, now_n)
