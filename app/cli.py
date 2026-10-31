@@ -498,14 +498,42 @@ def worker(
                     limit=limit,
                     include_raffle_pipeline=True,
                 )
+            # N-FARE-WORKER：周期内同步抓机票情报（原仅扫行程订阅，fare 来源永不自动刷新）
+            fare_runs: list = []
+            if execute:
+                try:
+                    import asyncio as _asyncio
+
+                    from app.services.discovery.service import run_discovery
+
+                    with session_scope(factory) as session:
+                        fare_runs = _asyncio.run(
+                            run_discovery(
+                                session,
+                                settings,
+                                module="fare",
+                                dry_run=False,
+                                limit=max(8, limit),
+                                persist_signals=True,
+                                after_fetch=True,
+                                enforce_cooldown=True,
+                            )
+                        )
+                except Exception as exc:
+                    console.print(f"[yellow]fare discover error: {exc}[/yellow]")
             heartbeat(
                 lock_path,
                 interval_seconds=interval,
                 rounds=rounds,
                 last_scans=len(runs),
+                last_fare=len(fare_runs),
                 last_run_at=datetime.now(UTC).isoformat(timespec="seconds"),
             )
-            console.print(f"[worker #{rounds}] scans={len(runs)} execute={execute}")
+            fare_ok = sum(1 for r in fare_runs if str(r.get("status", "")).startswith("ok"))
+            console.print(
+                f"[worker #{rounds}] trip_scans={len(runs)} fare={len(fare_runs)} "
+                f"fare_ok={fare_ok} execute={execute}"
+            )
             if once:
                 break
             time.sleep(max(30, interval))
