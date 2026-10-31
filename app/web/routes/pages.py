@@ -175,22 +175,39 @@ def campaigns_page(request: Request, db: DbDep, settings: SettingsDep):
     import json as _json
 
     rounds = db.scalars(
-        select(CampaignRound).order_by(CampaignRound.updated_at_utc.desc()).limit(50)
+        select(CampaignRound).order_by(CampaignRound.updated_at_utc.desc()).limit(200)
     ).all()
 
+    from app.services.raffle.campaigns_clean import is_noise_title, is_travel_related
+
     def _view(r: CampaignRound) -> dict:
+        # 视图层兜底去噪（即使库里还有脏数据也不展示）
+        if is_noise_title(r.title or ""):
+            return {"title": "", "hidden": True}
+        if not is_travel_related(r.title or "", r.prize_summary):
+            return {"title": "", "hidden": True}
+        # 只保留机票/旅行/住宿类奖品
+        _tags = _json.loads(r.tags or "{}") if r.tags else {}
+        _prizes = set(_tags.get("prize_types") or [])
+        _KEEP = {"flight_giveaway", "travel_package_unknown_air", "lodging_or_cruise"}
+        if _prizes and not (_KEEP & _prizes):
+            return {"title": "", "hidden": True}
+        from app.services.raffle.campaigns_clean import safe_core_recommend
+
         source_list = None
         china_outbound = "unknown"
-        core_recommend = False
+        tags = {}
         if r.tags:
             try:
                 data = _json.loads(r.tags)
                 if isinstance(data, dict):
+                    tags = data
                     source_list = data.get("source_list_url")
                     china_outbound = data.get("china_outbound_relevance") or "unknown"
-                    core_recommend = bool(data.get("core_recommend"))
             except Exception:
                 source_list = None
+        # 聚合源/无官方链接 永不 core（安全兜底）
+        core_recommend = safe_core_recommend(tags, r.official_url)
         return {
             "title": r.title,
             "organizer_name": r.organizer_name,
@@ -200,12 +217,29 @@ def campaigns_page(request: Request, db: DbDep, settings: SettingsDep):
             "demo_only": r.demo_only,
             "china_outbound": china_outbound,
             "core_recommend": core_recommend,
+            "prize_summary": (r.prize_summary or "")[:80],
+            "opens": tags.get("opens_iso") or tags.get("opens_raw"),
+            "closes": tags.get("closes_iso") or tags.get("closes_raw"),
+            "aggregator": tags.get("aggregator", False),
+            "prize_types": tags.get("prize_types") or [],
         }
 
     return templates.TemplateResponse(
         request,
         "campaigns.html",
-        {"rounds": [_view(r) for r in rounds], "app_name": settings.app.name},
+        {
+            "rounds": sorted(
+                (x for x in (_view(r) for r in rounds) if not x.get("hidden")),
+                key=lambda x: (
+                    0 if x.get("verify_status") == "verified" else
+                    1 if x.get("verify_status") == "auto_extracted" else
+                    2 if x.get("core_recommend") else 3,
+                    0 if x.get("closes") else 1,
+                    x.get("title") or "",
+                ),
+            ),
+            "app_name": settings.app.name,
+        },
     )
 
 

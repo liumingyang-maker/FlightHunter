@@ -5,28 +5,36 @@
 <p class="muted">资格为三态：符合 / 不符合 / 需核实。未找到限制 ≠ 明确不限。聚合线索 ≠ 已官方核实。数据来源与验证状态分列。<strong>浏览器自动填表仅限明确允许站点（automation_policy=allowed），外站默认人工；网络绑定为 partial。</strong></p>
 {% if rounds %}
 <table>
-  <thead><tr><th>标题</th><th>线索主办方</th><th>链接</th><th>核实状态</th><th>数据类型</th><th>内地出境</th><th>核心</th></tr></thead>
+  <thead><tr><th>标题</th><th>主办方</th><th>链接</th><th>状态</th><th>奖品类型</th><th>截止</th><th>中国适用</th><th>推荐</th></tr></thead>
   <tbody>
     {% for r in rounds %}
     <tr>
-      <td>{{ r.title }}</td>
-      <td>{{ r.organizer_name }}</td>
+      <td>
+        {{ r.title }}
+        {% if r.prize_summary %}<div class="muted" style="font-size:12px">{{ r.prize_summary }}</div>{% endif %}
+      </td>
+      <td>{% if r.aggregator %}<span class="muted">聚合线索</span>{% else %}{{ r.organizer_name }}{% endif %}</td>
       <td>
         {% if r.official_url %}
           <a href="{{ r.official_url }}" rel="noopener noreferrer" target="_blank">官方页</a>
         {% elif r.source_list_url %}
           <a href="{{ r.source_list_url }}" rel="noopener noreferrer" target="_blank" title="聚合/列表线索页，非官方报名地址">线索页</a>
         {% else %}
-          <span class="muted" title="聚合线索，非官方报名地址">无线索链接</span>
+          <span class="muted">—</span>
         {% endif %}
       </td>
       <td>
         {% if r.demo_only %}<span class="badge warn">fixture</span>
         {% elif r.verify_status == 'verified' %}<span class="badge">verified</span>
         {% elif r.verify_status == 'auto_extracted' %}<span class="badge">auto_extracted</span>
-        {% else %}<span class="badge">candidate/待核实</span>{% endif %}
+        {% else %}<span class="badge">待核实</span>{% endif %}
       </td>
-      <td>{% if r.demo_only %}<span class="badge warn">fixture</span>{% else %}<span class="badge">real_source</span>{% endif %}</td>
+      <td>
+        {% if r.prize_types %}
+          {% for t in r.prize_types %}<span class="badge">{{ t }}</span> {% endfor %}
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td>{% if r.closes %}{{ r.closes }}{% else %}<span class="muted">未知</span>{% endif %}</td>
       <td><span class="muted">{{ r.china_outbound or "unknown" }}</span></td>
       <td>{% if r.core_recommend %}<span class="badge">core</span>{% else %}<span class="muted">—</span>{% endif %}</td>
     </tr>

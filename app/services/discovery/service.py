@@ -396,6 +396,17 @@ def materialize_raffle_candidates(
         title = (s.title or "").strip()[:200]
         if not title:
             continue
+        # 去噪 + 只留机票/旅行（隐私条款/指南/热线不进抽奖列表）
+        from app.services.raffle.campaigns_clean import is_noise_title, is_travel_related
+        if is_noise_title(title):
+            continue
+        if not is_travel_related(title, s.raw_claim_text):
+            continue
+        # 只保留机票/旅行/住宿类奖品，其它（survey/other）不进列表
+        _prize_types = list(s.deal_types or [])
+        _KEEP_PRIZES = {"flight_giveaway", "travel_package_unknown_air", "lodging_or_cruise"}
+        if _prize_types and not (_KEEP_PRIZES & set(_prize_types)):
+            continue
         existing = session.scalar(
             select(CampaignRound).where(
                 CampaignRound.official_url == (s.url or candidate_url),
