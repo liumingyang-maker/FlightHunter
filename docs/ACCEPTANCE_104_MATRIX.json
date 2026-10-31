@@ -1,0 +1,938 @@
+[
+  {
+    "id": "T01",
+    "category": "P1-情报",
+    "title": "出发地多选默认 CKG/TFU/CTU",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_channels.py / airports",
+    "notes": ""
+  },
+  {
+    "id": "T02",
+    "category": "P1-情报",
+    "title": "出发地可增删内地机场",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T03",
+    "category": "P1-情报",
+    "title": "全国出发仅内地不含 HKG/MFM",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_p1_fare_samples.py::test_hk_mo_not_merged_into_mainland",
+    "notes": ""
+  },
+  {
+    "id": "T04",
+    "category": "P1-情报",
+    "title": "HKG/MFM 独立勾选不自动并入",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T05",
+    "category": "P1-情报",
+    "title": "国际航线过滤（排除纯内地）",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T06",
+    "category": "P1-情报",
+    "title": "HKG↔PVG 跨境保留",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_p1_fare_samples.py::test_q2_cross_border",
+    "notes": ""
+  },
+  {
+    "id": "T07",
+    "category": "P1-情报",
+    "title": "全球错价频道无默认偏好",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T08",
+    "category": "P1-情报",
+    "title": "四频道切换加载正确",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T09",
+    "category": "P1-情报",
+    "title": "情报分类：错价/漏油/促销/社区",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T10",
+    "category": "P1-情报",
+    "title": "社区 flash 不标官方促销",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_codex_batch_b1_b8.py::test_community_flash_not_official",
+    "notes": ""
+  },
+  {
+    "id": "T11",
+    "category": "P1-情报",
+    "title": "报道价≠可买价文案",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T12",
+    "category": "P1-情报",
+    "title": "无实时报价仍可用",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T13",
+    "category": "P1-情报",
+    "title": "来源链接可点击原文",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T14",
+    "category": "P1-情报",
+    "title": "危险协议链接过滤 javascript:",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T15",
+    "category": "P1-情报",
+    "title": "XSS 标题不执行",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_neutral_audit.py::test_xss_script_in_title_parsed_not_executed",
+    "notes": ""
+  },
+  {
+    "id": "T16",
+    "category": "P1-情报",
+    "title": "过期情报可隐藏",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T17",
+    "category": "P1-情报",
+    "title": "收藏反馈写入 signal_status",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T18",
+    "category": "P1-情报",
+    "title": "反馈筛选 bookmarked 命中",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_codex_batch_b1_b8.py::test_b3_api_filter_helper",
+    "notes": ""
+  },
+  {
+    "id": "T19",
+    "category": "P1-情报",
+    "title": "目的地筛选不匹配航司名",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_neutral_audit.py + q1_q5 dest filter",
+    "notes": ""
+  },
+  {
+    "id": "T20",
+    "category": "P1-情报",
+    "title": "类别筛选",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T21",
+    "category": "P1-情报",
+    "title": "travel 日期窗口重叠",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_p1_fare_samples.py::test_travel_filter_window_overlap",
+    "notes": ""
+  },
+  {
+    "id": "T22",
+    "category": "P1-情报",
+    "title": "发布/发现/旅行分列",
+    "method": "单测/标注样本/API",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T23",
+    "category": "P1-情报",
+    "title": "裸日期不写 published_at",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "scripts/label_samples.py 裸日期样本",
+    "notes": ""
+  },
+  {
+    "id": "T24",
+    "category": "P1-情报",
+    "title": "发佈日期标签写 published_at",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "scripts/label_samples.py 發佈日期样本",
+    "notes": ""
+  },
+  {
+    "id": "T25",
+    "category": "P1-情报",
+    "title": "多目的地多价不写单一票价",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "scripts/label_samples.py 多价样本 34/34",
+    "notes": ""
+  },
+  {
+    "id": "T26",
+    "category": "P1-情报",
+    "title": "MOP≠HKD 币种",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_codex_q1_q5.py::test_q2_mop_currency",
+    "notes": ""
+  },
+  {
+    "id": "T27",
+    "category": "P1-情报",
+    "title": "立省/最多減不写票价",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "scripts/label_samples.py 立省/最多減",
+    "notes": ""
+  },
+  {
+    "id": "T28",
+    "category": "P1-情报",
+    "title": "20KG 不作 20000",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "scripts/label_samples.py 20KG",
+    "notes": ""
+  },
+  {
+    "id": "T29",
+    "category": "P1-情报",
+    "title": "品牌航司不证明出发地",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_neutral_audit.py::test_origin_empty_on_pure_brand",
+    "notes": ""
+  },
+  {
+    "id": "T30",
+    "category": "P1-情报",
+    "title": "去重合并保守不误合并",
+    "method": "单测/标注样本/API",
+    "status": "PASS",
+    "evidence": "tests/unit/test_a_core_e2e.py::test_merge_intel_signals_conservative",
+    "notes": ""
+  },
+  {
+    "id": "T31",
+    "category": "P2-抽奖",
+    "title": "候选 materialize 不进 core",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "materialize core_recommend=False 静态+测试",
+    "notes": ""
+  },
+  {
+    "id": "T32",
+    "category": "P2-抽奖",
+    "title": "国内航班不 core",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "tests/unit/test_p2_core_recommend.py::test_domestic_word_never_core",
+    "notes": ""
+  },
+  {
+    "id": "T33",
+    "category": "P2-抽奖",
+    "title": "排除大陆不 core",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "tests/unit/test_p2_core_recommend.py::test_excluded_never_core",
+    "notes": ""
+  },
+  {
+    "id": "T34",
+    "category": "P2-抽奖",
+    "title": "candidate 不 core",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "tests/unit/test_p2_core_recommend.py::test_candidate_never_core",
+    "notes": ""
+  },
+  {
+    "id": "T35",
+    "category": "P2-抽奖",
+    "title": "社区源不 core",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "tests/unit/test_p2_core_recommend.py::test_non_official_source_never_core",
+    "notes": ""
+  },
+  {
+    "id": "T36",
+    "category": "P2-抽奖",
+    "title": "官方+国际+内地出境可 core",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "tests/unit/test_p2_core_recommend.py::test_positive_requires_international_and_official",
+    "notes": ""
+  },
+  {
+    "id": "T37",
+    "category": "P2-抽奖",
+    "title": "human_review 降级 core",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "tests/unit/test_a_core_e2e.py::test_core_e2e_demote_on_human_review",
+    "notes": ""
+  },
+  {
+    "id": "T38",
+    "category": "P2-抽奖",
+    "title": "closed/unknown 降级 core",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "tests/unit/test_a_core_e2e.py::test_core_demote_not_open",
+    "notes": ""
+  },
+  {
+    "id": "T39",
+    "category": "P2-抽奖",
+    "title": "资格缺国籍/居住→unknown",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "tests/unit/test_codex_q1_q5.py::test_q3 / eligibility",
+    "notes": ""
+  },
+  {
+    "id": "T40",
+    "category": "P2-抽奖",
+    "title": "资格冲突→ineligible",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "tests/unit/test_eligibility.py",
+    "notes": ""
+  },
+  {
+    "id": "T41",
+    "category": "P2-抽奖",
+    "title": "年龄无官方规则→unknown",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "multi_round age unknown",
+    "notes": ""
+  },
+  {
+    "id": "T42",
+    "category": "P2-抽奖",
+    "title": "页面 verify/类型/出境/核心分栏",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "campaigns.html 分栏 + pages",
+    "notes": ""
+  },
+  {
+    "id": "T43",
+    "category": "P2-抽奖",
+    "title": "demo 标 fixture",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "campaigns.html demo=fixture",
+    "notes": ""
+  },
+  {
+    "id": "T44",
+    "category": "P2-抽奖",
+    "title": "非 verified 标待核实",
+    "method": "单测/服务流",
+    "status": "PASS",
+    "evidence": "campaigns.html candidate/待核实",
+    "notes": ""
+  },
+  {
+    "id": "T45",
+    "category": "P2-抽奖",
+    "title": "官方链接 vs 线索链接",
+    "method": "单测/服务流",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T46",
+    "category": "P2-抽奖",
+    "title": "OCR 日期解析（海报）",
+    "method": "单测/服务流",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T47",
+    "category": "P2-抽奖",
+    "title": "HTML/OCR 冲突→人工复核",
+    "method": "单测/服务流",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T48",
+    "category": "P2-抽奖",
+    "title": "entry probe 不登录不提交",
+    "method": "单测/服务流",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T49",
+    "category": "P2-抽奖",
+    "title": "robots 拒绝时 blocked",
+    "method": "单测/服务流",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T50",
+    "category": "P2-抽奖",
+    "title": "自动核验命名 auto_extracted",
+    "method": "单测/服务流",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T51",
+    "category": "P3-行程",
+    "title": "未确认不扫描",
+    "method": "矩阵测试",
+    "status": "PASS",
+    "evidence": "tests/unit/test_p3_trip_matrix.py",
+    "notes": ""
+  },
+  {
+    "id": "T52",
+    "category": "P3-行程",
+    "title": "demo 不可确认",
+    "method": "矩阵测试",
+    "status": "PASS",
+    "evidence": "test_p3_trip_matrix.py::test_demo_cannot_confirm",
+    "notes": ""
+  },
+  {
+    "id": "T53",
+    "category": "P3-行程",
+    "title": "确认后订阅启用",
+    "method": "矩阵测试",
+    "status": "PASS",
+    "evidence": "test_p3_trip_matrix.py 确认启用",
+    "notes": ""
+  },
+  {
+    "id": "T54",
+    "category": "P3-行程",
+    "title": "确认恢复 trip_not_confirmed",
+    "method": "矩阵测试",
+    "status": "PASS",
+    "evidence": "test_p3_trip_matrix.py::test_confirm_restores_trip_not_confirmed",
+    "notes": ""
+  },
+  {
+    "id": "T55",
+    "category": "P3-行程",
+    "title": "已确认编辑不扫停",
+    "method": "矩阵测试",
+    "status": "PASS",
+    "evidence": "test_p3_trip_matrix.py::test_confirmed_edit_rescan_off_keeps_enabled",
+    "notes": ""
+  },
+  {
+    "id": "T56",
+    "category": "P3-行程",
+    "title": "auto_scan_off 不禁用已有",
+    "method": "矩阵测试",
+    "status": "PASS",
+    "evidence": "同上",
+    "notes": ""
+  },
+  {
+    "id": "T57",
+    "category": "P3-行程",
+    "title": "fare_monitor 尊重 auto_attach",
+    "method": "矩阵测试",
+    "status": "PASS",
+    "evidence": "test_p3_trip_matrix.py::test_confirm_respects_fare_watch_off",
+    "notes": ""
+  },
+  {
+    "id": "T58",
+    "category": "P3-行程",
+    "title": "取消行程停订阅",
+    "method": "矩阵测试",
+    "status": "PASS",
+    "evidence": "test_p3_trip_matrix.py::test_cancel_disables_all",
+    "notes": ""
+  },
+  {
+    "id": "T59",
+    "category": "P3-行程",
+    "title": "日期校验 end>=start",
+    "method": "矩阵测试",
+    "status": "PASS",
+    "evidence": "tests/unit/test_neutral_audit2.py::test_trip_date_validation",
+    "notes": ""
+  },
+  {
+    "id": "T60",
+    "category": "P3-行程",
+    "title": "行程福利匹配国家",
+    "method": "矩阵测试",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T61",
+    "category": "P3-行程",
+    "title": "城市匹配 unknown 不假匹配",
+    "method": "矩阵测试",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T62",
+    "category": "P3-行程",
+    "title": "日期窗口相交",
+    "method": "矩阵测试",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T63",
+    "category": "P3-行程",
+    "title": "城市停留日相交",
+    "method": "矩阵测试",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T64",
+    "category": "P3-行程",
+    "title": "社区 travel_deal 无国家不全国",
+    "method": "矩阵测试",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T65",
+    "category": "P3-行程",
+    "title": "领取记录不被编辑清空",
+    "method": "矩阵测试",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T66",
+    "category": "安全",
+    "title": "私网 URL 拒绝",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_neutral_audit.py::test_url_safety_rejects_metadata",
+    "notes": ""
+  },
+  {
+    "id": "T67",
+    "category": "安全",
+    "title": "169.254.169.254 拒绝",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "同上 169.254",
+    "notes": ""
+  },
+  {
+    "id": "T68",
+    "category": "安全",
+    "title": "数字 IP 别名拒绝",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_p0_browser_safety.py 数字别名",
+    "notes": ""
+  },
+  {
+    "id": "T69",
+    "category": "安全",
+    "title": "共享地址 100.64 拒绝",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_p0_browser_safety.py::test_shared_address_space_blocked",
+    "notes": ""
+  },
+  {
+    "id": "T70",
+    "category": "安全",
+    "title": "公开→私网重定向拒绝且无请求",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_neutral_audit.py::test_safe_get_no_follow_to_private",
+    "notes": ""
+  },
+  {
+    "id": "T71",
+    "category": "安全",
+    "title": "robots 403 fail-closed",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_codex_q1_q5.py::test_q1_robots_403_fail_closed",
+    "notes": ""
+  },
+  {
+    "id": "T72",
+    "category": "安全",
+    "title": "robots 429 fail-closed",
+    "method": "中立审计/单测",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T73",
+    "category": "安全",
+    "title": "流式超限拒绝",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_q1_stream_too_large",
+    "notes": ""
+  },
+  {
+    "id": "T74",
+    "category": "安全",
+    "title": "Content-Length 超限拒绝",
+    "method": "中立审计/单测",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T75",
+    "category": "安全",
+    "title": "URL 内嵌凭据拒绝",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "url_safety credentials",
+    "notes": ""
+  },
+  {
+    "id": "T76",
+    "category": "安全",
+    "title": "同源请求也 DNS 校验",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_c14_browser_doctor.py::test_same_origin_also_validated",
+    "notes": ""
+  },
+  {
+    "id": "T77",
+    "category": "安全",
+    "title": "弹窗默认拒绝",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_c14_browser_doctor.py::test_popup_handler_rejects",
+    "notes": ""
+  },
+  {
+    "id": "T78",
+    "category": "安全",
+    "title": "浏览器私网目标拒绝",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_p0_browser_safety.py private",
+    "notes": ""
+  },
+  {
+    "id": "T79",
+    "category": "安全",
+    "title": "safe_get 在 loop 内安全",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_codex_q1_q5.py::test_q11 / safe_get_sync",
+    "notes": ""
+  },
+  {
+    "id": "T80",
+    "category": "安全",
+    "title": "pwsh 非 powershell 5.1",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "delivery.py pwsh",
+    "notes": ""
+  },
+  {
+    "id": "T81",
+    "category": "安全",
+    "title": "toast Base64 传参无拼接注入",
+    "method": "中立审计/单测",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T82",
+    "category": "安全",
+    "title": "subprocess UTF-8 解码",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "delivery.py UTF-8",
+    "notes": ""
+  },
+  {
+    "id": "T83",
+    "category": "安全",
+    "title": "无 shell=True",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_neutral_audit.py::test_subprocess_no_shell_true",
+    "notes": ""
+  },
+  {
+    "id": "T84",
+    "category": "安全",
+    "title": "无 eval/exec",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_neutral_audit.py::test_no_eval_in_app",
+    "notes": ""
+  },
+  {
+    "id": "T85",
+    "category": "安全",
+    "title": "无 f-string SQL",
+    "method": "中立审计/单测",
+    "status": "PASS",
+    "evidence": "test_neutral_audit.py::test_sqlalchemy_no_raw_fstring_in_app",
+    "notes": ""
+  },
+  {
+    "id": "T86",
+    "category": "通知/来源",
+    "title": "通知成功幂等不重复",
+    "method": "单测/日志",
+    "status": "PASS",
+    "evidence": "test_q4_delivery_persists_and_limits",
+    "notes": ""
+  },
+  {
+    "id": "T87",
+    "category": "通知/来源",
+    "title": "失败重试≤3",
+    "method": "单测/日志",
+    "status": "PASS",
+    "evidence": "同上 attempts≤3",
+    "notes": ""
+  },
+  {
+    "id": "T88",
+    "category": "通知/来源",
+    "title": "事件键跨进程持久",
+    "method": "单测/日志",
+    "status": "PASS",
+    "evidence": "NotificationDelivery 持久表",
+    "notes": ""
+  },
+  {
+    "id": "T89",
+    "category": "通知/来源",
+    "title": "长正文状态不丢",
+    "method": "单测/日志",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T90",
+    "category": "通知/来源",
+    "title": "ok_existing≠ok_zero",
+    "method": "单测/日志",
+    "status": "PASS",
+    "evidence": "ok_existing vs ok_zero",
+    "notes": ""
+  },
+  {
+    "id": "T91",
+    "category": "通知/来源",
+    "title": "ok_valuable 计有价值",
+    "method": "单测/日志",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T92",
+    "category": "通知/来源",
+    "title": "source_health 区分 existing",
+    "method": "单测/日志",
+    "status": "PASS",
+    "evidence": "source_health round_existing",
+    "notes": ""
+  },
+  {
+    "id": "T93",
+    "category": "通知/来源",
+    "title": "失败来源 consecutive_failures",
+    "method": "单测/日志",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T94",
+    "category": "通知/来源",
+    "title": "403/429 停抓",
+    "method": "单测/日志",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T95",
+    "category": "通知/来源",
+    "title": "Worker 单实例锁",
+    "method": "单测/日志",
+    "status": "PASS",
+    "evidence": "worker_lock 单实例",
+    "notes": ""
+  },
+  {
+    "id": "T96",
+    "category": "运行/Web",
+    "title": "Web 启动不改旧库表",
+    "method": "隔离冒烟/Playwright/72h",
+    "status": "PASS",
+    "evidence": "smoke_after_codex_merge.py 旧库不变",
+    "notes": ""
+  },
+  {
+    "id": "T97",
+    "category": "运行/Web",
+    "title": "doctor 只读",
+    "method": "隔离冒烟/Playwright/72h",
+    "status": "PASS",
+    "evidence": "test_c14_browser_doctor.py::test_doctor_readonly_no_init_db",
+    "notes": ""
+  },
+  {
+    "id": "T98",
+    "category": "运行/Web",
+    "title": "迁移 outdated 提示",
+    "method": "隔离冒烟/Playwright/72h",
+    "status": "PASS",
+    "evidence": "check_alembic_head outdated",
+    "notes": ""
+  },
+  {
+    "id": "T99",
+    "category": "运行/Web",
+    "title": "迁移 in_sync",
+    "method": "隔离冒烟/Playwright/72h",
+    "status": "PASS",
+    "evidence": "isolated_migrate_drill.py",
+    "notes": ""
+  },
+  {
+    "id": "T100",
+    "category": "运行/Web",
+    "title": "CLI report_migration 可见",
+    "method": "隔离冒烟/Playwright/72h",
+    "status": "PASS",
+    "evidence": "report_migration 接线",
+    "notes": ""
+  },
+  {
+    "id": "T101",
+    "category": "运行/Web",
+    "title": "Web 四频道页可用",
+    "method": "隔离冒烟/Playwright/72h",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T102",
+    "category": "运行/Web",
+    "title": "campaigns 分栏可用",
+    "method": "隔离冒烟/Playwright/72h",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T103",
+    "category": "运行/Web",
+    "title": "登录后私有数据",
+    "method": "隔离冒烟/Playwright/72h",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  },
+  {
+    "id": "T104",
+    "category": "运行/Web",
+    "title": "72h 连续采样报告",
+    "method": "隔离冒烟/Playwright/72h",
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": ""
+  }
+]
