@@ -208,6 +208,7 @@
       (it.reported_total ? "<span>报道价 " + esc(it.reported_total) + esc(it.currency || "") + "</span>" : "<span>价格 " + (it.multi_price ? "多价/未知" : "未知") + "</span>") +
       (it.travel_date_hint ? "<span>出行 " + esc(it.travel_date_hint) + "</span>" : "") +
       "<span>" + esc(timeLabel) + "</span>" +
+      (it.freshness ? "<span class=\"badge-cat " + (it.freshness==='stale'?'bug':it.freshness==='new'?'official':'') + "\">" + ({new:'新',recent:'近3天',aging:'1-30天',stale:'>30天',unknown:'日期未知'})[it.freshness] + "</span>" : "") +
       "<span>" + (it.is_error_fare ? "风险:自担" : "非实时可买") + "</span>" +
       (it.signal_id ? ' <button type="button" class="btn fb" data-id="' + esc(it.signal_id) + '" data-fb="bookmarked">收藏</button>' : "") +
       "</div>" +

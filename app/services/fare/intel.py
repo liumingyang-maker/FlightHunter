@@ -669,6 +669,7 @@ def build_intel_view(
                 "source_url": s.original_url,
                 "source_name": src.name if src else None,
                 "published_at": s.published_at_utc.isoformat() if s.published_at_utc else None,
+                "freshness": _freshness_label(s.published_at_utc),
                 "found_at": s.created_at_utc.isoformat() if s.created_at_utc else None,
                 "expired": expired,
                 "international": intl,
@@ -692,6 +693,25 @@ def build_intel_view(
     out.sort(key=lambda x: (x["priority"], x["found_at"] or ""))
     merged = merge_intel_signals(out)
     return merged[:limit]
+
+
+
+def _freshness_label(published):
+    from datetime import datetime, timezone
+    if not published:
+        return "unknown"
+    now = datetime.now(timezone.utc)
+    pub = published.replace(tzinfo=timezone.utc) if published.tzinfo is None else published
+    hours = (now - pub).total_seconds() / 3600
+    if hours < 0:
+        return "invalid"
+    if hours < 24:
+        return "new"
+    if hours < 72:
+        return "recent"
+    if hours <= 24 * 30:
+        return "aging"
+    return "stale"
 
 
 def _zh_summary(s: FareDealSignal) -> str:

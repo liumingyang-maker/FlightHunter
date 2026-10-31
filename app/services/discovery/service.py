@@ -790,9 +790,29 @@ async def fetch_source(
     offers_persisted = 0
     raffles_persisted = 0
     if persist_signals and parsed:
+        # P0：入库前核实发布日期 + 过滤旧文
         if effective_module == "fare":
+            from app.services.fare.verify_pipeline import enrich_and_filter_signals
+            try:
+                import asyncio as _aio
+                try:
+                    _aio.get_running_loop()
+                    _in_loop = True
+                except RuntimeError:
+                    _in_loop = False
+                if _in_loop:
+                    import concurrent.futures as _cf
+                    with _cf.ThreadPoolExecutor(max_workers=1) as _pool:
+                        parsed = _pool.submit(_aio.run, enrich_and_filter_signals(adapter, parsed)).result(timeout=60)
+                else:
+                    parsed = _aio.run(enrich_and_filter_signals(adapter, parsed))
+            except Exception:
+                pass
+        if effective_module == "fare":
+            # P0: 只把非 stale/lead_only 的写入正式情报
+            _filtered = [x for x in parsed if getattr(x, "confidence", "") not in ("stale", "lead_only")]
             sigs = materialize_fare_signals(
-                session, source, parsed, candidate_url=cand.url if cand else None
+                session, source, _filtered, candidate_url=cand.url if cand else None
             )
             signals_persisted = len(sigs)
         elif effective_module == "trip":
