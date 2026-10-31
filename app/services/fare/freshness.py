@@ -129,3 +129,30 @@ async def verify_published_date(
         return extract_published_from_html(result.text)
     except Exception:
         return None
+
+
+def cleanup_stale_signals(session, *, max_age_days: int = 30) -> dict:
+    """清除超过 N 天的旧情报（published_at 或 created_at）。"""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import or_, select
+
+    from app.models.fare import FareDealSignal
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=max_age_days)
+    rows = session.scalars(
+        select(FareDealSignal).where(
+            or_(
+                FareDealSignal.published_at_utc < cutoff,
+                (FareDealSignal.published_at_utc.is_(None))
+                & (FareDealSignal.created_at_utc < cutoff),
+            )
+        )
+    ).all()
+    deleted = 0
+    for r in rows:
+        session.delete(r)
+        deleted += 1
+    session.flush()
+    return {"deleted": deleted, "cutoff": cutoff.isoformat()}

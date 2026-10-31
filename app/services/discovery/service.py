@@ -837,6 +837,14 @@ async def fetch_source(
             )
 
     # 统计口径：仅成功读取写 last_fetch_at；解析>0 才算有价值
+    # P0：清除超过 30 天的旧情报
+    if effective_module == "fare" and not dry_run:
+        try:
+            from app.services.fare.freshness import cleanup_stale_signals
+
+            _clean = cleanup_stale_signals(session, max_age_days=30)
+        except Exception:
+            pass
     # R-015：parsed>0 且无新增 → ok_existing，不是 ok_zero
     persisted_total = signals_persisted + offers_persisted + raffles_persisted
     if result.ok:
