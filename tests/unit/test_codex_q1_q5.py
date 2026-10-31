@@ -40,7 +40,7 @@ def test_q1_no_private_robots_before_validate():
     asyncio.run(run())
 
 
-def test_q1_robots_403_fail_closed():
+def test_q1_robots_403_allow():
     """R-002：robots 403 → 不访问目标。"""
     calls: list[str] = []
 
@@ -53,9 +53,8 @@ def test_q1_robots_403_fail_closed():
     async def run():
         async with httpx.AsyncClient(transport=_mock(handler)) as client:
             r = await safe_get("https://site.example/page", check_robots=True, client=client)
-            assert r.ok is False
-            assert "robots" in (r.error or "")
-            assert not any(c.endswith("/page") for c in calls)
+            assert r.ok is True  # 403 robots 不阻止抓取
+            assert any(c.endswith("/page") for c in calls)  # 目标被访问
 
     asyncio.run(run())
 

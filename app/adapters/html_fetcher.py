@@ -37,7 +37,11 @@ class HttpxFetchAdapter(SourceAdapter):
         self._robots_cache: dict[str, robotparser.RobotFileParser | None] = {}
 
     async def _robots_allowed(self, client: httpx.AsyncClient, url: str) -> bool:
-        """robots 非 200 或异常 → fail-closed（不允许）。"""
+        """robots 判定：404/403/超时 → 允许抓正文（只拒明确 Disallow）。
+
+        R-002/C14: 403 ≠ 禁止抓取；很多 CDN 对 robots.txt 返回 403 但正文公开。
+        只有 robots.txt 明确 Disallow 才拒绝。
+        """
         if not self.settings.sources.obey_robots_and_site_terms:
             return True
         parsed = urlparse(url)
@@ -53,10 +57,14 @@ class HttpxFetchAdapter(SourceAdapter):
                         rp.parse(raw.decode("utf-8", errors="replace").splitlines())
                         self._robots_cache[origin] = rp
                     else:
-                        self._robots_cache[origin] = None
+                        # 403/404/其它 → 无 robots 规则，允许抓
+                        self._robots_cache[origin] = "ALLOW_NO_ROBOTS"
             except Exception:
-                self._robots_cache[origin] = None
+                # 网络超时/异常 → 允许抓（不因 robots 故障阻断）
+                self._robots_cache[origin] = "ALLOW_NO_ROBOTS"
         entry = self._robots_cache.get(origin)
+        if entry == "ALLOW_NO_ROBOTS":
+            return True
         if entry is None:
             return False
         try:
@@ -299,7 +307,7 @@ class HttpxFetchAdapter(SourceAdapter):
 
 
 _IATA_RE = re.compile(r"\b([A-Z]{3})\b")
-_PRICE_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*元")
+_PRICE_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(?:元|¥)")
 _FARE_KW = (
     "机票",
     "flight",
@@ -321,6 +329,25 @@ _FARE_KW = (
     "連稅",
     "含税",
     "promotion",
+    # 补：Premium-Flights 等英文 deal 站
+    "round trip",
+    "business class",
+    "first class",
+    "economy class",
+    "premium economy",
+    "class round",
+    "deal alert",
+    "black friday",
+    "sale",
+    "discount",
+    "offer",
+    "cheap",
+    "lowest",
+    "best price",
+    "flight deal",
+    "air deal",
+    "fare sale",
+    "ticket",
 )
 _DEAL_KW = (
     "元",
@@ -525,7 +552,10 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
     has_deal_kw = any(k in low or k in label for k in _DEAL_KW)
     has_flight_kw = any(k in low or k in label for k in _FARE_KW)
     has_reported_amount = bool(
-        _PRICE_RE.search(label) or re.search(r"(?:HK\$?|MOP\$?|¥)\s*\d", label, re.I)
+        _PRICE_RE.search(label)
+        or re.search(r"(?:HK\$?|MOP\$?|¥|£|€|US\$|AUS\$|RMB|CNY)\s*\d", label, re.I)
+        or re.search(r"from\s+[\$£€]|from\s+US\$|from\s+AUS\$", label, re.I)
+        or re.search(r"\d[\d,]*\s*(?:€|£|\$|US\$|AUS\$)", label, re.I)
     )
     if not has_deal_kw and not has_flight_kw:
         return None

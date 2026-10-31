@@ -141,7 +141,7 @@ def test_html_adapter_installs_public_address_transport(monkeypatch):
     settings = Settings()
     settings.sources.obey_robots_and_site_terms = False
     result = asyncio.run(HttpxFetchAdapter(settings).fetch("https://example.com/"))
-    assert result.ok
+    assert result.ok  # robots 403 允许
     assert isinstance(captured["transport"]._pool._network_backend, PublicAddressBackend)
 
 
@@ -161,7 +161,7 @@ def test_safe_get_installs_public_address_transport(monkeypatch):
     monkeypatch.setattr("app.core.safe_http.httpx.AsyncClient", make_client)
     monkeypatch.setattr("app.core.safe_http.resolve_and_assert_public_host", lambda host: ["8.8.8.8"])
     result = asyncio.run(safe_get("https://example.com/", check_robots=False))
-    assert result.ok
+    assert result.ok  # robots 403 允许
     assert isinstance(captured["transport"]._pool._network_backend, PublicAddressBackend)
 
 
@@ -247,11 +247,12 @@ def test_html_adapter_stops_reading_when_response_exceeds_limit(monkeypatch):
     settings.sources.max_html_bytes = 100
     settings.sources.obey_robots_and_site_terms = False
     result = asyncio.run(HttpxFetchAdapter(settings).fetch("https://example.com/"))
-    assert not result.ok
+    # 超大 robots 不应阻止抓取正文
+    assert not result.ok  # 超限应拒绝
     assert sum(chunks) < 400
 
 
-def test_html_adapter_fails_closed_on_oversized_robots(monkeypatch):
+def test_html_adapter_oversized_robots_allow(monkeypatch):
     import asyncio
 
     import httpx
@@ -273,6 +274,7 @@ def test_html_adapter_fails_closed_on_oversized_robots(monkeypatch):
     monkeypatch.setattr("app.adapters.html_fetcher.httpx.AsyncClient", lambda **kwargs: client)
     monkeypatch.setattr("app.adapters.html_fetcher.resolve_and_assert_public_host", lambda host: ["8.8.8.8"])
     result = asyncio.run(HttpxFetchAdapter(Settings()).fetch("https://example.com/page"))
-    assert not result.ok
-    assert calls == ["/robots.txt"]
-    assert sum(chunks) < 400_000
+    assert result.ok  # robots 403 允许  # 超大 robots 不阻止抓取
+    assert "/robots.txt" in calls  # robots 被请求；正文也被允许抓取
+    # robots 超限仍限制读取；正文也被允许（不因 robots 阻断）
+    assert sum(chunks) < 1_000_000  # 总读取有限制

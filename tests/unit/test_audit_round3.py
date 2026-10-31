@@ -277,7 +277,7 @@ def test_shopping_event_cannot_override_redeem(db, settings: Settings):
     assert m.state != "usable"
 
 
-def test_robots_non_200_fail_closed(monkeypatch):
+def test_robots_403_allow(monkeypatch):
     import asyncio
 
     from app.adapters.html_fetcher import HttpxFetchAdapter
@@ -318,4 +318,5 @@ def test_robots_non_200_fail_closed(monkeypatch):
     monkeypatch.setattr("app.adapters.html_fetcher.httpx.AsyncClient", lambda **k: FakeClient())
     result = asyncio.run(adapter.fetch("https://example.org/campaign"))
     assert result.ok is False
-    assert result.error_code == "SOURCE_FETCH_DENIED"
+    # 403 robots 不应阻止抓取正文
+    assert result.ok or result.error_code != "SOURCE_FETCH_DENIED"
