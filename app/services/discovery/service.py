@@ -810,7 +810,7 @@ async def fetch_source(
                 pass
         if effective_module == "fare":
             # P0: 只把非 stale/lead_only 的写入正式情报
-            _filtered = [x for x in parsed if getattr(x, "confidence", "") not in ("stale", "lead_only")]
+            _filtered = [x for x in parsed if getattr(x, "confidence", "") not in ("stale", "lead_only", "rejected_no_date", "unverified_date")]
             sigs = materialize_fare_signals(
                 session, source, _filtered, candidate_url=cand.url if cand else None
             )

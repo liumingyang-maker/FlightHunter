@@ -32,7 +32,7 @@ def test_scheduler_uses_discovery_by_default(db, settings: Settings, monkeypatch
 
         def parse(self, text: str, *, url: str):
             return [
-                ParsedSignal(
+                ParsedSignal(published_at=__import__("datetime").datetime(2026,10,29), 
                     title="特价机票 CKG NRT 999元",
                     raw_claim_text="特价机票 CKG NRT 999元",
                     url="https://example.org/d",

@@ -37,7 +37,7 @@ class FakeHtmlAdapter(SourceAdapter):
 
     def parse(self, text: str, *, url: str) -> list[ParsedSignal]:
         return [
-            ParsedSignal(
+            ParsedSignal(published_at=__import__("datetime").datetime(2026,10,29), 
                 title="特价机票 CKG NRT 999元",
                 raw_claim_text="特价机票 CKG NRT 999元",
                 url="https://example.org/deal1",

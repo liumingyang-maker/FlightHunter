@@ -54,9 +54,10 @@ async def enrich_and_filter_signals(
             out.append(sig)  # 保留但标 stale，让 UI 显示灰色
             continue
 
-        # 4) 无发布日期 → 标 unverified
+        # 4) 无发布日期 → 拒绝入库（宁缺毋滥）
         if pub is None:
-            sig.confidence = "unverified_date"
+            sig.confidence = "rejected_no_date"
+            continue  # 不入正式情报
 
         out.append(sig)
     return out
