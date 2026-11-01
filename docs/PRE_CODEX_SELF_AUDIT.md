@@ -1,6 +1,6 @@
 # FlightHunter · Codex 介入前 iMiMo 全面自检报告
 
-**基线 SHA:** `fa20992ecdd37fcf314d0c83df2ca740711fa24e`  
+**基线 SHA:** `49afae7`  
 **分支:** `develop`（与 origin/develop 一致）  
 **时间:** 2026-11-01  
 **自检者:** iMiMo（开发者自检，非独立复审）
@@ -11,11 +11,11 @@
 
 | 项 | 值 |
 |---|---|
-| HEAD | `fa20992ecdd37fcf314d0c83df2ca740711fa24e` |
-| origin/develop | `fa20992ecdd37fcf314d0c83df2ca740711fa24e` |
+| HEAD | `49afae7` |
+| origin/develop | `49afae7` |
 | 工作区 | clean |
-| Git bundle | `review_exports/FlightHunter-Backup-fa20992.bundle` |
-| SQLite 备份 | `review_exports/fh_daily-backup-fa20992.db` |
+| Git bundle | `review_exports/FlightHunter-Backup-49afae7.bundle` |
+| SQLite 备份 | `review_exports/fh_daily-backup-49afae7.db` |
 
 ---
 
