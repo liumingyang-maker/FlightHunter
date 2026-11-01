@@ -54,7 +54,7 @@ class PublicAddressBackend(httpcore.AsyncNetworkBackend):
                 )
             except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
                 last_error = exc
-            except TypeError as exc:
+            except TypeError:
                 # 旧 httpcore 签名兼容：去掉可选参数重试一次
                 try:
                     return await self._backend.connect_tcp(host=address, port=port)

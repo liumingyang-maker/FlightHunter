@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -36,7 +36,7 @@ def save_article_cache(
 
     art_key = make_article_key(url, guid=guid, platform_id=source_id)
     existing = session.scalar(select(ArticleCache).where(ArticleCache.url_hash == art_key))
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     if existing:
         existing.last_checked_at = now

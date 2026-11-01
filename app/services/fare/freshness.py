@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 # 从详情页 HTML 提取真实发布日期
@@ -64,7 +64,7 @@ def extract_published_from_html(html: str) -> datetime | None:
             try:
                 dt = datetime.fromisoformat(raw[:10])
                 # 未来日期不合理 → 忽略
-                if dt.year > datetime.now(timezone.utc).year + 1:
+                if dt.year > datetime.now(UTC).year + 1:
                     continue
                 return dt
             except ValueError:
@@ -82,8 +82,8 @@ def is_stale(published: datetime | None, max_age_days: int = 30) -> bool:
     """发布日期超过 N 天 → 旧文。无日期 → 不算 stale（交给上游处理）。"""
     if published is None:
         return False
-    now = datetime.now(timezone.utc)
-    pub = published.replace(tzinfo=timezone.utc) if published.tzinfo is None else published
+    now = datetime.now(UTC)
+    pub = published.replace(tzinfo=UTC) if published.tzinfo is None else published
     return (now - pub).days > max_age_days
 
 
@@ -91,8 +91,8 @@ def is_future(published: datetime | None) -> bool:
     """发布日期在未来 → 无效。"""
     if published is None:
         return False
-    now = datetime.now(timezone.utc)
-    pub = published.replace(tzinfo=timezone.utc) if published.tzinfo is None else published
+    now = datetime.now(UTC)
+    pub = published.replace(tzinfo=UTC) if published.tzinfo is None else published
     return pub > now
 
 
@@ -100,8 +100,8 @@ def classify_signal_freshness(published: datetime | None) -> str:
     """新鲜度分类：new / recent / aging / stale / unknown。"""
     if published is None:
         return "unknown"
-    now = datetime.now(timezone.utc)
-    pub = published.replace(tzinfo=timezone.utc) if published.tzinfo is None else published
+    now = datetime.now(UTC)
+    pub = published.replace(tzinfo=UTC) if published.tzinfo is None else published
     hours = (now - pub).total_seconds() / 3600
     if hours < 0:
         return "invalid"
@@ -137,13 +137,13 @@ def archive_stale_signals(session, *, max_age_days: int = 30) -> dict:
     - 不删除记录，不破坏收藏/通知引用
     - 推荐视图默认隐藏 archived
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from sqlalchemy import or_, select
 
     from app.models.fare import FareDealSignal
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=max_age_days)
     rows = session.scalars(
         select(FareDealSignal).where(
