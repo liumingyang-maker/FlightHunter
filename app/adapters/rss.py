@@ -17,7 +17,7 @@ class RssAdapter(SourceAdapter):
     def __init__(self, settings: Settings) -> None:
         self._http = HttpxFetchAdapter(settings)
 
-    async def fetch(self, url: str) -> FetchResult:
+    async def fetch(self, url: str, headers: dict | None = None) -> FetchResult:
         return await self._http.fetch(url)
 
     def parse(self, text: str, *, url: str) -> list[ParsedSignal]:

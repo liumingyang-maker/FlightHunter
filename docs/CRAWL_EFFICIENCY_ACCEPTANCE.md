@@ -1,20 +1,21 @@
-# 采集效率验收
+# 采集效率验收（真实 A/B）
 
-- **HEAD:** 4b0572eb4e27b156fb0ea367e7f76088453a35ae
-- **基线:** `CRAWL_EFFICIENCY_BASELINE.md`（5 源 / 5 请求 / 26 信号 / 10s）
+- **生成时间：** 2026-11-01T00:53:52.842652+00:00
+- **来源数：** 3
 
-## 优化效果
+## A/B 对比
 
-| 指标 | 基线 | 优化后 | 变化 |
+| 指标 | Round 1 (冷) | Round 2 (热) | 变化 |
 |---|---|---|---|
-| HTTP 请求数 | 5 | 条件请求后减少 | **↓** |
-| 下载字节 | 1.1 MB | 304/缓存跳过 | **↓** |
-| 重复解析 | 0（首轮） | 缓存复用 | **↓** |
-| 新信号 | 26 | 不降低 | **=** |
-| 错误数 | 0 | 0 | **=** |
+| HTTP 请求 | 3 | 3 | = |
+| 下载字节 | 308,648 | 308,648 | = |
+| 来源数 | 3 | 3 | |
 
-## 资源节约
+## 明细
 
-- ETag 命中 → 0 字节下载
-- 内容哈希相同 → 跳过解析
-- 文章键去重 → 不重复入库
+- **FlyNext.hk** R1: {'round': 1, 'source': 'FlyNext.hk', 'http_requests': 1, 'bytes': 88369, 'elapsed_sec': 0.8, 'status': 'ok', 'parsed': 18, 'duplicate_content': False}
+- **MainlyMiles RSS** R1: {'round': 1, 'source': 'MainlyMiles RSS', 'http_requests': 1, 'bytes': 199003, 'elapsed_sec': 0.87, 'status': 'ok', 'entries': 70, 'parsed': 70, 'duplicate_content': False}
+- **Premium-Flights RSS** R1: {'round': 1, 'source': 'Premium-Flights RSS', 'http_requests': 1, 'bytes': 21276, 'elapsed_sec': 1.54, 'status': 'ok', 'entries': 12, 'parsed': 12, 'duplicate_content': False}
+- **FlyNext.hk** R2: {'round': 2, 'source': 'FlyNext.hk', 'http_requests': 1, 'bytes': 88369, 'elapsed_sec': 0.31, 'status': 'ok', 'parsed': 18, 'duplicate_content': False}
+- **MainlyMiles RSS** R2: {'round': 2, 'source': 'MainlyMiles RSS', 'http_requests': 1, 'bytes': 199003, 'elapsed_sec': 1.51, 'status': 'ok', 'entries': 70, 'parsed': 70, 'duplicate_content': False}
+- **Premium-Flights RSS** R2: {'round': 2, 'source': 'Premium-Flights RSS', 'http_requests': 1, 'bytes': 21276, 'elapsed_sec': 0.75, 'status': 'ok', 'entries': 12, 'parsed': 12, 'duplicate_content': False}

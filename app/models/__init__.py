@@ -23,6 +23,8 @@ from app.models.fare import (
     FareWatchMatch,
 )
 from app.models.shared import (
+    ArticleCache,
+    OCRCache,
     Evidence,
     Notification,
     NotificationDelivery,
@@ -65,7 +67,9 @@ __all__ = [
     "FareRiskEvidence",
     "FareWatch",
     "FareWatchMatch",
+    "ArticleCache",
     "Notification",
+    "OCRCache",
     "NotificationDelivery",
     "Organizer",
     "Profile",

@@ -20,7 +20,7 @@ from sqlalchemy import select
 class FakeHtmlAdapter(SourceAdapter):
     name = "fake"
 
-    async def fetch(self, url: str) -> FetchResult:
+    async def fetch(self, url: str, headers=None) -> FetchResult:
         html = (
             "<html><head><title>Deals</title></head><body>"
             "<a href='https://example.org/deal1'>特价机票 CKG NRT 999元</a>"

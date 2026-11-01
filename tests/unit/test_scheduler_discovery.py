@@ -20,7 +20,7 @@ def test_scheduler_uses_discovery_by_default(db, settings: Settings, monkeypatch
     from app.adapters.base import FetchResult, ParsedSignal, SourceAdapter
 
     class Fake(SourceAdapter):
-        async def fetch(self, url: str) -> FetchResult:
+        async def fetch(self, url: str, headers=None) -> FetchResult:
             return FetchResult(
                 ok=True,
                 url=url,

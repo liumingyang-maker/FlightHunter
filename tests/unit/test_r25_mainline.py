@@ -37,7 +37,7 @@ def test_raffle_module_creates_candidate_round(db, settings: Settings, monkeypat
     from app.adapters.base import FetchResult, ParsedSignal
 
     class Fake:
-        async def fetch(self, url):
+        async def fetch(self, url, headers=None):
             return FetchResult(
                 ok=True,
                 url=url,

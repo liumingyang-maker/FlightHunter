@@ -765,11 +765,12 @@ async def fetch_source(
     now_check = utc_now()
     do_fetch, cond_headers = should_fetch(source, now_check)
     if not do_fetch:
+        # P1-1: 冷却跳过不更新 last_attempt_at（只记录检查结果）
         source.last_result = "skipped_cooldown"
-        source.last_attempt_at = now_check
         return {"source_id": source.id, "status": "skipped", "reason": "cooldown"}
 
-    result = await adapter.fetch(source.base_url)
+    # P1-3: 条件请求头传给适配器
+    result = await adapter.fetch(source.base_url, headers=cond_headers if cond_headers else None)
     now = utc_now()
     source.last_attempt_at = now
     if not result.ok:

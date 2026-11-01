@@ -76,7 +76,7 @@ class HttpxFetchAdapter(SourceAdapter):
         except Exception:
             return False
 
-    async def fetch(self, url: str) -> FetchResult:
+    async def fetch(self, url: str, headers: dict | None = None) -> FetchResult:
         try:
             assert_public_http_url(url)
             host = (urlparse(url).hostname or "").lower()

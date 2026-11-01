@@ -113,7 +113,7 @@ async def test_fetch_source_with_none_text_does_not_crash(db, settings: Settings
     class _EmptyAdapter:
         name = "empty"
 
-        async def fetch(self, url: str):
+        async def fetch(self, url: str, headers=None):
             return FetchResult(
                 ok=True,
                 url=url,
