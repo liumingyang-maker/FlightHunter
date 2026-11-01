@@ -284,6 +284,15 @@ def materialize_fare_signals(
             deal.risk_tier = _risk_tier_for_subtypes(sorted(merged))
 
         sig_url = s.url or candidate_url
+        # PC-03: 用文章缓存检测内容变化
+        from app.services.discovery.cache import get_article_cache, save_article_cache
+
+        cached = get_article_cache(session, sig_url, guid=getattr(s, "guid", None), source_id=source.id)
+        content_hash = hash(s.raw_claim_text or s.title or "")
+        if cached and cached.content_hash == str(content_hash):
+            # 内容未变化，跳过重复解析
+            continue
+
         existing_sig = session.scalar(
             select(FareDealSignal).where(
                 FareDealSignal.deal_id == deal.id,
@@ -292,6 +301,22 @@ def materialize_fare_signals(
             )
         )
         if existing_sig:
+            # PC-04: 旧文改价/改摘要 → 更新事实字段
+            if s.reported_total is not None:
+                existing_sig.reported_total = s.reported_total
+            if s.currency:
+                existing_sig.currency = s.currency
+            if s.raw_claim_text:
+                existing_sig.raw_claim_text = s.raw_claim_text[:2000]
+            # 更新缓存
+            save_article_cache(
+                session,
+                sig_url,
+                guid=getattr(s, "guid", None),
+                source_id=source.id,
+                content_hash=str(content_hash),
+                title=s.title[:200],
+            )
             continue
         sig = FareDealSignal(
             id=new_id(),
@@ -967,8 +992,8 @@ async def run_discovery(
                 else:
                     backoff_h = interval_h
                 if (now - last_attempt) < _td(hours=backoff_h):
+                    # PC-01: 冷却跳过不更新 last_attempt_at（只记录检查结果）
                     s.last_result = "skipped_cooldown"
-                    s.last_attempt_at = now  # 更新避免重复计数
                     continue
         sources.append(s)
         if len(sources) >= limit:

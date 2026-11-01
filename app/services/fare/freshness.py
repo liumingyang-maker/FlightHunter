@@ -18,8 +18,9 @@ _DATE_PATTERNS = [
     # JSON-LD datePublished
     r'"datePublished"\s*:\s*"(20\d{2}-\d{2}-\d{2})',
     r'"date_published"\s*:\s*"(20\d{2}-\d{2}-\d{2})',
-    # <time datetime="...">
-    r'<time[^>]+datetime="(20\d{2}-\d{2}-\d{2})',
+    # <time> 仅在有 published/date 标签时接受（PC-05）
+    r'<time[^>]+(?:class|id)="[^"]*(?:published|date|pubdate)[^"]*"[^>]+datetime="(20\d{2}-\d{2}-\d{2})',
+    r'<time[^>]+datetime="(20\d{2}-\d{2}-\d{2})"[^>]+(?:class|id)="[^"]*(?:published|date|pubdate)[^"]*"',
     # meta 标签（name 或 property 属性）
     r'<meta[^>]+(?:name|property)="(?:date|pubdate|publish_date|article:published_time|og:published_time)"[^>]+content="(20\d{2}-\d{2}-\d{2})',
     r'<meta[^>]+content="(20\d{2}-\d{2}-\d{2})"[^>]+(?:name|property)="(?:date|pubdate|publish_date|article:published_time|og:published_time)"',

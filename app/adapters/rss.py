@@ -18,7 +18,8 @@ class RssAdapter(SourceAdapter):
         self._http = HttpxFetchAdapter(settings)
 
     async def fetch(self, url: str, headers: dict | None = None) -> FetchResult:
-        return await self._http.fetch(url)
+        # PC-02: 转发条件请求头给 HTTPX 适配器
+        return await self._http.fetch(url, headers=headers)
 
     def parse(self, text: str, *, url: str) -> list[ParsedSignal]:
         """机票/通用：仅保留机票语义条目，避免财经新闻直接入库。"""

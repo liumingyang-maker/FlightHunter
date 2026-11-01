@@ -77,6 +77,7 @@ class HttpxFetchAdapter(SourceAdapter):
             return False
 
     async def fetch(self, url: str, headers: dict | None = None) -> FetchResult:
+        headers_arg = headers
         try:
             assert_public_http_url(url)
             host = (urlparse(url).hostname or "").lower()
@@ -90,7 +91,10 @@ class HttpxFetchAdapter(SourceAdapter):
                 fetched_at=datetime.now(UTC),
             )
 
+        # PC-02: 合并条件请求头，不覆盖
         headers = {"User-Agent": "FlightHunter/1.0 (+local personal research; respectful)"}
+        if headers_arg:
+            headers.update(headers_arg)
         timeout = self.settings.sources.max_runtime_seconds_per_page
         current = url
         try:

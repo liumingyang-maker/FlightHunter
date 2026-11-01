@@ -172,7 +172,7 @@ async def safe_get(
                         False, None, None, None, current, "robots_unavailable_fail_closed", redirects, True
                     )
 
-            async with client.stream("GET", current) as resp:
+            async with client.stream("GET", current, headers=hdrs) as resp:
                 if resp.status_code in (301, 302, 303, 307, 308):
                     loc = resp.headers.get("location") or ""
                     if not loc:
