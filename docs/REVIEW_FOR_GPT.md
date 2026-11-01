@@ -323,6 +323,39 @@ git grep -n "assert_public_http_url\|ensure_aware_utc\|_is_trusted_quote" -- app
 | FH-R4-P1-04 发现 E2E 闭环 | **暂缓为下一主任务** | 不冒充 done；继续 partial |
 | 合 main / 无人值守抓取 | **不采纳** | 安全与设计包边界 |
 
+### 12b. GPT-6 / 复审响应（PC-01～07 · R1-R5，HEAD 至 `e979f8b` 后续修复）
+
+来源链：GPT-6 审 `5d9c464` → 修 `49afae7` → 复审仍报 R1-R5 → 修 `d4b8e35` → 本会话复核时发现 **R1 ETag 曾错贴到异常分支**（`resp` 未定义），已改正并补主链路测试。
+
+| 建议 ID | 决定 | 原因 | 落地 / 证据 |
+|---|---|---|---|
+| PC-01 外层冷却 | 采纳 | 防止内层跳过改 last_attempt | `fetch_source` 冷却 skip 不写 attempt；unit |
+| PC-02 ETag 请求头 | 采纳 | 无 If-None-Match 无法 304 | `should_fetch` → `HttpxFetchAdapter` 合并 headers |
+| PC-03 缓存接入 | 采纳 | 解析前应比内容哈希 | `materialize_fare_signals` 先查 ArticleCache |
+| PC-04 改价更新 | 采纳 | 旧文改价不得死锁旧事实 | existing_sig 更新 reported_total |
+| PC-05 发布日严格 | 采纳 | 「更新于」≠ 发布日 | freshness 去掉「更新于」；test_r1r5_mainline |
+| PC-06 A/B | 部分采纳 | 真实外站 ETag 覆盖不稳定 | 本地可控链路已测；不宣称外网全面 304 |
+| PC-07 版本字段 | 部分采纳 | 解析器版本缓存键保留 parse_version | 全量版本展示 UI 未做，不冒充 done |
+| R1 ETag/304 链路 | 采纳（本会话复修） | `d4b8e35` 曾把 etag 写到异常分支且 `resp` 未定义 | 成功路径写入 etag/last_modified；304 返回 status_code=304；`fetch_source` 记 not_modified + 清失败计数；测试 `test_r1_*` |
+| R2 缓存首次写入 | 采纳 | 仅更新路径写缓存则首跑无跳过 | 首次 signal 同步 `save_article_cache`；sha256 稳定摘要；`test_r2_*` |
+| R3 日期/撤回 | 采纳 | 更新日当发布日 + 撤回价仍存活 | 中文「更新于」不再匹配 published；撤回关键词清空 reported_total；`test_r3_*` |
+| R4 失败退避 | 采纳 | 失败计数双增会过度退避 | `ingest_fetch_result` 不再 +1；仅主路径失败分支 +1；退避用 fail_count；`test_r4_*` |
+| R5 版本/其它残留 | 部分采纳 | 与 PC-07 同类 | 未见独立可复现缺陷证据的项不扩 scope |
+
+**本会话验证（非独立验收）：**
+
+```text
+pytest tests/unit -q  → 357 passed（含 test_r1r5_mainline.py 10 条主链路）
+scripts/label_samples.py → 34/34 ALL_PASS
+```
+
+**未验证 / 不宣称：**
+
+- 真实外网多数源是否返回 304 / ETag（未在本会话做外网全面探测）
+- Web UI 四频道展示、真实 Reddit 采集
+- Codex 独立验收（此前 BLOCKED，模型/登录问题）
+
 实现方对 GPT 建议保留最终取舍权；分歧必须书面说明，不得静默忽略，也不得无理由全盘照搬。
 
 **审核用仓库 URL**：https://github.com/liumingyang-maker/FlightHunter  
+**本轮审核包**：见 `review_exports/`（以包内 manifest 的 HEAD 为准）

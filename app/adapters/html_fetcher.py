@@ -118,9 +118,7 @@ class HttpxFetchAdapter(SourceAdapter):
                             message=f"跳转目标不安全（请求前拦截）: {exc}",
                             final_url=current,
                             fetched_at=datetime.now(UTC),
-                        etag=resp.headers.get("etag"),
-                        last_modified=resp.headers.get("last-modified"),
-                    )
+                        )
                     if not await self._robots_allowed(client, current):
                         return FetchResult(
                             ok=False,
@@ -154,6 +152,19 @@ class HttpxFetchAdapter(SourceAdapter):
                                 )
                             current = nxt
                             continue
+                        etag = resp.headers.get("etag")
+                        last_modified = resp.headers.get("last-modified")
+                        if resp.status_code == 304:
+                            # R1: 304 无正文；把验证器带回，由 fetch_source 复用缓存
+                            return FetchResult(
+                                ok=True,
+                                url=url,
+                                status_code=304,
+                                final_url=current,
+                                fetched_at=datetime.now(UTC),
+                                etag=etag,
+                                last_modified=last_modified,
+                            )
                         if resp.status_code >= 400:
                             return FetchResult(
                                 ok=False, url=url, status_code=resp.status_code,
@@ -174,6 +185,8 @@ class HttpxFetchAdapter(SourceAdapter):
                             content_type=resp.headers.get("content-type"), text=text,
                             content_hash=content_hash_of_html(text), final_url=current,
                             fetched_at=datetime.now(UTC),
+                            etag=etag,
+                            last_modified=last_modified,
                         )
                 return FetchResult(
                     ok=False,

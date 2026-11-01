@@ -109,11 +109,22 @@
 
 | 检查 | 结果 |
 |---|---|
-| pytest | **347 passed** |
+| pytest | **357 passed**（2026-11-01 复核，含 R1-R5 主链路 10 条） |
 | 标注样本 | **34/34** |
 | skip 测试 | **0** |
 | 弱断言 | **0** |
-| ruff | 18 处已修 |
+| ruff | 既有问题仍在（全仓 220）；本轮触碰文件无新增必修项 |
+
+### 3b. 本会话 R1 复修说明（重要）
+
+`d4b8e35` 中 R1 ETag/Last-Modified 曾被错误贴到 **URL 不安全异常分支**，且引用了该分支不存在的 `resp`。本会话：
+
+1. 将 etag/last_modified 移到 **200 成功路径** 与 **304 专用返回**
+2. 去掉异常分支中的错误引用
+3. `fetch_source` 的 304 分支改为：记 `not_modified`、更新 last_*、清 consecutive_failures；**不再**用 listing URL 误查 ArticleCache
+4. 新增 `tests/unit/test_r1r5_mainline.py` 走 `fetch_source → Router → Adapter → handle_response` 真实调用链
+
+**说明：** 这是「辅助测试通过 ≠ 主链路验证」的又一实例——347 全绿时 R1 主链路仍是坏的。
 
 ---
 

@@ -819,16 +819,17 @@ async def fetch_source(
     result = await adapter.fetch(source.base_url, headers=cond_headers if cond_headers else None)
     now = utc_now()
     source.last_attempt_at = now
-    # R1: 处理 ETag/304 响应
-    # R1: 304 → 复用缓存内容，不当空内容
+    # R1: 304 → 内容未变；记成功，不解析、不当失败
     if result.status_code == 304:
-        from app.services.discovery.cache import get_article_cache
-
-        cached = get_article_cache(session, source.base_url, source_id=source.id)
-        if cached and cached.content_hash:
-            result.ok = True
-            result.content_hash = cached.content_hash
         source.last_result = "not_modified"
+        source.last_fetch_at = now
+        source.last_success_at = now
+        source.consecutive_failures = 0
+        if result.etag:
+            source.etag = result.etag[:500]
+        if result.last_modified:
+            source.last_modified = result.last_modified[:200]
+        session.flush()
         return {"source_id": source.id, "status": "not_modified", "reason": "304"}
 
     if result.ok:

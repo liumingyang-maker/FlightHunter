@@ -1,7 +1,7 @@
 # FlightHunter 新会话交接摘要
 
-**交接时间：** 2026-11-01  
-**当前 HEAD：** `d4b8e35`（develop，与 origin/develop 一致）  
+**交接时间：** 2026-11-01（二次更新）  
+**当前 HEAD：** 见 `git log -1`（develop）  
 **GitHub：** https://github.com/liumingyang-maker/FlightHunter
 
 ---
@@ -17,8 +17,9 @@
 
 | 项 | 值 |
 |---|---|
-| 测试 | 347 passed + 样本 34/34 |
-| 104 矩阵 | 64 PASS / 40 NOT_TESTED |
+| 测试 | **357 passed** + 样本 34/34 |
+| 新增 | `tests/unit/test_r1r5_mainline.py`（10 条主链路） |
+| 104 矩阵 | 64 PASS / 40 NOT_TESTED（未本轮重刷） |
 | Web | :8765 运行中 |
 | Worker | daily_usage，间隔 1800s |
 | 迁移 | 0009（含 0005→0009 兼容） |
@@ -29,6 +30,7 @@
 
 | HEAD | 内容 |
 |---|---|
+| 本会话 | **R1 复修**：`d4b8e35` 曾把 ETag 错贴到异常分支（`resp` 未定义）；成功路径才写 etag/last_modified；304 正确处理；补 test_r1r5_mainline |
 | `d4b8e35` | R1-R5：ETag/304 链路、缓存首次写入、日期严格、失败退避 |
 | `49afae7` | PC-01~05：外层冷却、ETag 头、缓存接入、改价更新、发布日严格 |
 | `c258e9f` | 更新自检报告 HEAD |
@@ -60,9 +62,9 @@
 
 ## 六、下一步
 
-1. **交 GPT 复审 `d4b8e35`**（审核包：`review_exports/FlightHunter-PreCodex-Review-r1r5.zip`）
+1. **交 GPT 复审本会话 R1 复修**（重新打包 `review_exports/` 中最新 PreCodex ZIP；旧 `r1r5.zip` 打包时 R1 修复有误，勿再用）
 2. 按 GPT 意见继续修剩余问题
-3. 等 GPT 确认后交 Codex 独立验收
+3. 等 GPT 确认后交 Codex 独立验收（Codex 此前因模型/登录 BLOCKED）
 4. **不新增来源/功能**，专注把已写的代码接成生效的业务流程
 
 ---
