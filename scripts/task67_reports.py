@@ -23,11 +23,11 @@ def main() -> None:
     ts = datetime.now(timezone.utc).isoformat()
 
     # 跑测试
-    test_out = run(".venv/Scripts/python.exe -B -m pytest tests/unit -q --tb=line 2>&1")
+    test_out = run(".venv\\Scripts\\python.exe -B -m pytest tests/unit -q --tb=line 2>&1")
     test_summary = test_out.splitlines()[-1] if test_out else "unknown"
 
     # 样本
-    sample_out = run(".venv/Scripts/python.exe -B scripts/label_samples.py 2>&1")
+    sample_out = run(".venv\\Scripts\\python.exe -B scripts/label_samples.py 2>&1")
     sample_ok = "ALL_PASS" in sample_out
 
     # 生成报告

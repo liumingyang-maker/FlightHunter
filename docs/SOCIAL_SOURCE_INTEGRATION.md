@@ -1,6 +1,6 @@
 # 社交论坛来源集成
 
-- **HEAD:** 49a8952a916a52fc286f7e95e084c43cc4205af3
+- **HEAD:** 4b0572eb4e27b156fb0ea367e7f76088453a35ae
 
 ## 数据契约（SocialPost）
 

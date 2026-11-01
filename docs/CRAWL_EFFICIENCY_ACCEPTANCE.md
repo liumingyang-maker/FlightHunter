@@ -1,6 +1,6 @@
 # 采集效率验收
 
-- **HEAD:** 49a8952a916a52fc286f7e95e084c43cc4205af3
+- **HEAD:** 4b0572eb4e27b156fb0ea367e7f76088453a35ae
 - **基线:** `CRAWL_EFFICIENCY_BASELINE.md`（5 源 / 5 请求 / 26 信号 / 10s）
 
 ## 优化效果

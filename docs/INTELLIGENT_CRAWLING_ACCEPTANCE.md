@@ -1,8 +1,8 @@
 # 智能增量采集验收
 
-- **HEAD:** 49a8952a916a52fc286f7e95e084c43cc4205af3
-- **时间:** 2026-11-01T00:20:47.822718+00:00
-- **测试:** Command '.venv/Scripts/python.exe -B -m pytest tests/unit -q --tb=line 2>&1' returned non-zero exit status 1.
+- **HEAD:** 4b0572eb4e27b156fb0ea367e7f76088453a35ae
+- **时间:** 2026-11-01T00:21:05.375003+00:00
+- **测试:** 347 passed, 1 warning in 12.58s
 
 ## 增量采集
 
