@@ -155,10 +155,13 @@ def ensure_migrations_or_warn(settings: Settings) -> dict:
 
 def prepare_engine(settings: Settings) -> tuple[Engine, sessionmaker[Session], dict]:
     """CLI/Web 统一：新库才 create_all；已有库不静默改表；返回迁移报告。"""
+    path = sqlite_path(settings)
+    is_new = not path.exists()
     report = ensure_migrations_or_warn(settings)
     engine = create_db_engine(settings)
-    if report.get("action") == "create_all_new_db":
+    if is_new or report.get("action") == "create_all_new_db":
         init_db(engine)
+        report["action"] = "create_all_new_db"
     factory = make_session_factory(engine)
     return engine, factory, report
 

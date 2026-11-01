@@ -243,6 +243,10 @@ def materialize_fare_signals(
     created: list[FareDealSignal] = []
     now = utc_now()
     for s in parsed[:limit]:
+        # 任务三：文章缓存去重
+        from app.services.discovery.incremental import make_article_key
+
+        art_key = make_article_key(s.url or "", guid=getattr(s, "guid", None))
         origin = (s.origin_airport or "").upper() or None
         dest = (s.destination_airport or "").upper() or None
         window = "flex"
@@ -754,6 +758,16 @@ async def fetch_source(
             "status": "manual_only",
             "message": "无可用自动抓取适配器；请使用人工粘贴入口",
         }
+
+    # 任务三：增量条件请求
+    from app.services.discovery.incremental import handle_response, should_fetch
+
+    now_check = utc_now()
+    do_fetch, cond_headers = should_fetch(source, now_check)
+    if not do_fetch:
+        source.last_result = "skipped_cooldown"
+        source.last_attempt_at = now_check
+        return {"source_id": source.id, "status": "skipped", "reason": "cooldown"}
 
     result = await adapter.fetch(source.base_url)
     now = utc_now()

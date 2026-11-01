@@ -31,7 +31,13 @@ class Source(Base, UUIDPk, TimestampMixin):
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_valuable_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_signal_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_result: Mapped[str | None] = mapped_column(String(40))  # ok|ok_zero|failed|skipped_cooldown
+    last_result: Mapped[str | None] = mapped_column(String(40))
+    # 持久增量采集（任务三）
+    etag: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_modified: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_due_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)  # ok|ok_zero|failed|skipped_cooldown
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
     notes: Mapped[str | None] = mapped_column(Text)
     module: Mapped[str] = mapped_column(
@@ -143,3 +149,33 @@ class NotificationDelivery(Base, UUIDPk, TimestampMixin):
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[str | None] = mapped_column(Text)
     notification_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("notifications.id", ondelete="SET NULL"))
+
+
+class ArticleCache(Base, UUIDPk, TimestampMixin):
+    """文章缓存：URL/GUID 稳定键 + 内容哈希。"""
+
+    __tablename__ = "article_cache"
+
+    source_id: Mapped[str | None] = mapped_column(String(36))
+    url_hash: Mapped[str | None] = mapped_column(Text)
+    guid: Mapped[str | None] = mapped_column(Text)
+    content_hash: Mapped[str | None] = mapped_column(Text)
+    parse_version: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[str | None] = mapped_column(Text)
+    first_seen_at: Mapped[str | None] = mapped_column(Text)
+    last_checked_at: Mapped[str | None] = mapped_column(Text)
+    last_changed_at: Mapped[str | None] = mapped_column(Text)
+    etag: Mapped[str | None] = mapped_column(Text)
+    last_modified: Mapped[str | None] = mapped_column(Text)
+
+
+class OCRCache(Base, UUIDPk, TimestampMixin):
+    """OCR 缓存：图片哈希 + 语言 + 模型版本。"""
+
+    __tablename__ = "ocr_cache"
+
+    image_hash: Mapped[str | None] = mapped_column(Text)
+    ocr_lang: Mapped[str | None] = mapped_column(Text)
+    model_version: Mapped[str | None] = mapped_column(Text)
+    ocr_text: Mapped[str | None] = mapped_column(Text)
