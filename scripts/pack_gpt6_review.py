@@ -18,10 +18,10 @@ BASELINE = "14d681e"  # 上次 Codex 审核版本
 
 # 敏感信息扫描
 SENSITIVE_PATTERNS = [
-    (re.compile(r"hGJz1D_cN656GL4tn3cHQTy5S5t1WysET9oioZD2JtE"), "HARDCODED_API_TOKEN"),
-    (re.compile(r"6Oc5qnj-ifzrpIO6kfFYG6MxT3ulOfur1JR6VX-Nh9G"), "HARDCODED_API_TOKEN"),
-    (re.compile(r"UcyfGIiY8PTuqPkSLRLxXW_LQb9ZcsNSpMVUQx1iboo"), "HARDCODED_SESSION_SECRET"),
-    (re.compile(r"QmuWeDKWHGhvSjA8jYCQw4uWoptzgqQYz6t2FU8wAtA"), "HARDCODED_SESSION_SECRET"),
+    (re.compile(r"hGJz1D[A-Za-z0-9_-]{30,}"), "EXPOSED_TOKEN"),
+    (re.compile(r"6Oc5qnj[A-Za-z0-9_-]{30,}"), "EXPOSED_TOKEN"),
+    (re.compile(r"UcyfGIi[A-Za-z0-9_-]{30,}"), "EXPOSED_SECRET"),
+    (re.compile(r"QmuWeDK[A-Za-z0-9_-]{30,}"), "EXPOSED_SECRET"),
     (re.compile(r"ghp_[A-Za-z0-9]{36}"), "GITHUB_TOKEN"),
     (re.compile(r"gho_[A-Za-z0-9]{36}"), "GITHUB_TOKEN"),
     (re.compile(r"sk-[A-Za-z0-9]{20,}"), "OPENAI_KEY"),
@@ -130,6 +130,16 @@ def main() -> None:
     # 4) 写入 zip
     import zipfile
 
+    # 脱敏 diff 和 manifest 中的敏感内容
+    def _redact(text: str) -> str:
+        for pat, label in SENSITIVE_PATTERNS:
+            text = pat.sub("[REDACTED]", text)
+        return text
+
+    diff_stat_clean = _redact(diff_stat)
+    diff_log_clean = _redact(diff_log)
+    diff_patch_clean = _redact(diff_patch)
+
     with zipfile.ZipFile(OUT_ZIP, "w", zipfile.ZIP_DEFLATED) as zf:
         # README
         readme = f"""# FlightHunter GPT-6 Independent Review Package
@@ -178,7 +188,7 @@ See DIFF_SINCE_{BASELINE}.md
             diff_stat + "\n\n" + diff_log + "\n",
         )
         # 限制 patch 大小（前 500KB）
-        patch_trim = diff_patch[:500_000]
+        patch_trim = diff_patch_clean[:500_000]
         if len(diff_patch) > 500_000:
             patch_trim += f"\n\n... TRUNCATED ({len(diff_patch)} total bytes) ...\n"
         zf.writestr(f"DIFF_SINCE_{BASELINE}.patch", patch_trim)
@@ -218,7 +228,7 @@ See DIFF_SINCE_{BASELINE}.md
             "file_count": len(all_files),
             "excluded_count": excluded_count,
             "redacted_file_count": clean_count,
-            "sensitive_hits": sensitive,
+            "sensitive_hits": [{"file": s["file"], "type": s["type"], "note": "redacted"} for s in sensitive],
             "files": all_files,
         }
         zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))

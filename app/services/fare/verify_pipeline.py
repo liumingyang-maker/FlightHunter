@@ -56,7 +56,7 @@ async def enrich_and_filter_signals(
 
         # 4) 无发布日期 → 拒绝入库（宁缺毋滥）
         if pub is None:
-            sig.confidence = "rejected_no_date"
+            sig.confidence = "lead_pending_verification"
             continue  # 不入正式情报
 
         out.append(sig)

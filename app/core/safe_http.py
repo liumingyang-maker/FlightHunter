@@ -294,7 +294,7 @@ async def _robots_policy(client: httpx.AsyncClient, url: str) -> str:
     - 404 → allow（明确无 robots 文件的常见约定）
     - 403/401/405 → allow（CDN 常见；403 ≠ 禁止抓取）
     - 429 → error（限速，fail-closed）
-    - 其它/异常 → allow（不因 robots 故障阻断正文）
+    - 5xx/异常 → error（保守：服务器不可达时不允许抓取）
     """
     parsed = urlparse(url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -313,14 +313,14 @@ async def _robots_policy(client: httpx.AsyncClient, url: str) -> str:
             if status == 429:
                 return "error"
             if status != 200:
-                return "allow"
+                return "error"
             raw = await _read_body_limited(resp, ROBOTS_MAX_BYTES)
             if raw is None:
-                return "allow"
+                return "error"
             text = raw.decode("utf-8", errors="replace")
         rp = robotparser.RobotFileParser()
         rp.parse(text.splitlines())
         path = parsed.path or "/"
         return "allow" if rp.can_fetch(DEFAULT_UA, path) else "blocked"
     except Exception:
-        return "allow"
+        return "error"

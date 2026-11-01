@@ -15,7 +15,7 @@ if not cands:
 exe = str(cands[-1])
 out = Path("data/ui_screens")
 out.mkdir(parents=True, exist_ok=True)
-token = "hGJz1D_cN656GL4tn3cHQTy5S5t1WysET9oioZD2JtE"
+token = "REDACTED_TOKEN_USE_AUTH_JSON"
 results = []
 
 with sync_playwright() as p:

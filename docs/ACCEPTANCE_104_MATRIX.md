@@ -10,11 +10,11 @@
 | T03 | P1-情报 | 全国出发仅内地不含 HKG/MFM | 单测/标注样本/API | PASS | tests/unit/test_p1_fare_samples.py::test_hk_mo_not_merged_into_mainland |
 | T04 | P1-情报 | HKG/MFM 独立勾选不自动并入 | 单测/标注样本/API | NOT_TESTED | — |
 | T05 | P1-情报 | 国际航线过滤（排除纯内地） | 单测/标注样本/API | NOT_TESTED | — |
-| T06 | P1-情报 | HKG↔PVG 跨境保留 | 单测/标注样本/API | PASS | tests/unit/test_p1_fare_samples.py::test_q2_cross_border |
+| T06 | P1-情报 | HKG↔PVG 跨境保留 | 单测/标注样本/API | NOT_TESTED | — |
 | T07 | P1-情报 | 全球错价频道无默认偏好 | 单测/标注样本/API | NOT_TESTED | — |
 | T08 | P1-情报 | 四频道切换加载正确 | 单测/标注样本/API | NOT_TESTED | — |
 | T09 | P1-情报 | 情报分类：错价/漏油/促销/社区 | 单测/标注样本/API | NOT_TESTED | — |
-| T10 | P1-情报 | 社区 flash 不标官方促销 | 单测/标注样本/API | PASS | tests/unit/test_codex_batch_b1_b8.py::test_community_flash_not_official |
+| T10 | P1-情报 | 社区 flash 不标官方促销 | 单测/标注样本/API | NOT_TESTED | — |
 | T11 | P1-情报 | 报道价≠可买价文案 | 单测/标注样本/API | NOT_TESTED | — |
 | T12 | P1-情报 | 无实时报价仍可用 | 单测/标注样本/API | NOT_TESTED | — |
 | T13 | P1-情报 | 来源链接可点击原文 | 单测/标注样本/API | NOT_TESTED | — |
@@ -43,7 +43,7 @@
 | T36 | P2-抽奖 | 官方+国际+内地出境可 core | 单测/服务流 | PASS | tests/unit/test_p2_core_recommend.py::test_positive_requires_international_and_official |
 | T37 | P2-抽奖 | human_review 降级 core | 单测/服务流 | PASS | tests/unit/test_a_core_e2e.py::test_core_e2e_demote_on_human_review |
 | T38 | P2-抽奖 | closed/unknown 降级 core | 单测/服务流 | PASS | tests/unit/test_a_core_e2e.py::test_core_demote_not_open |
-| T39 | P2-抽奖 | 资格缺国籍/居住→unknown | 单测/服务流 | PASS | tests/unit/test_codex_q1_q5.py::test_q3 / eligibility |
+| T39 | P2-抽奖 | 资格缺国籍/居住→unknown | 单测/服务流 | PASS | tests/unit/test_codex_q1_q5.py::test_q3_core_recommend_not_for_domestic_or_excluded / eligibility |
 | T40 | P2-抽奖 | 资格冲突→ineligible | 单测/服务流 | PASS | tests/unit/test_eligibility.py |
 | T41 | P2-抽奖 | 年龄无官方规则→unknown | 单测/服务流 | PASS | multi_round age unknown |
 | T42 | P2-抽奖 | 页面 verify/类型/出境/核心分栏 | 单测/服务流 | PASS | campaigns.html 分栏 + pages |
@@ -74,8 +74,8 @@
 | T67 | 安全 | 169.254.169.254 拒绝 | 中立审计/单测 | PASS | 同上 169.254 |
 | T68 | 安全 | 数字 IP 别名拒绝 | 中立审计/单测 | PASS | test_p0_browser_safety.py 数字别名 |
 | T69 | 安全 | 共享地址 100.64 拒绝 | 中立审计/单测 | PASS | test_p0_browser_safety.py::test_shared_address_space_blocked |
-| T70 | 安全 | 公开→私网重定向拒绝且无请求 | 中立审计/单测 | PASS | test_neutral_audit.py + net_fault_inject_test.py |
-| T71 | 安全 | robots 403 fail-closed | 中立审计/单测 | PASS | test_codex_q1_q5.py::test_q1_robots_403_fail_closed |
+| T70 | 安全 | 公开→私网重定向拒绝且无请求 | 中立审计/单测 | PASS | test_neutral_audit.py::test_safe_get_no_follow_to_private |
+| T71 | 安全 | robots 403 fail-closed | 中立审计/单测 | PASS | test_codex_q1_q5.py::test_q1_robots_403_allow |
 | T72 | 安全 | robots 429 fail-closed | 中立审计/单测 | NOT_TESTED | — |
 | T73 | 安全 | 流式超限拒绝 | 中立审计/单测 | PASS | test_q1_stream_too_large |
 | T74 | 安全 | Content-Length 超限拒绝 | 中立审计/单测 | NOT_TESTED | — |
@@ -83,7 +83,7 @@
 | T76 | 安全 | 同源请求也 DNS 校验 | 中立审计/单测 | PASS | test_c14_browser_doctor.py::test_same_origin_also_validated |
 | T77 | 安全 | 弹窗默认拒绝 | 中立审计/单测 | PASS | test_c14_browser_doctor.py::test_popup_handler_rejects |
 | T78 | 安全 | 浏览器私网目标拒绝 | 中立审计/单测 | PASS | test_p0_browser_safety.py private |
-| T79 | 安全 | safe_get 在 loop 内安全 | 中立审计/单测 | PASS | test_codex_q1_q5.py::test_q11 / safe_get_sync |
+| T79 | 安全 | safe_get 在 loop 内安全 | 中立审计/单测 | NOT_TESTED | — |
 | T80 | 安全 | pwsh 非 powershell 5.1 | 中立审计/单测 | PASS | delivery.py pwsh |
 | T81 | 安全 | toast Base64 传参无拼接注入 | 中立审计/单测 | NOT_TESTED | — |
 | T82 | 安全 | subprocess UTF-8 解码 | 中立审计/单测 | PASS | delivery.py UTF-8 |
@@ -112,5 +112,5 @@
 
 ## 汇总
 
-- **NOT_TESTED**: 37
-- **PASS**: 67
+- **NOT_TESTED**: 40
+- **PASS**: 64

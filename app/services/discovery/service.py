@@ -810,7 +810,7 @@ async def fetch_source(
                 pass
         if effective_module == "fare":
             # P0: 只把非 stale/lead_only 的写入正式情报
-            _filtered = [x for x in parsed if getattr(x, "confidence", "") not in ("stale", "lead_only", "rejected_no_date", "unverified_date")]
+            _filtered = [x for x in parsed if getattr(x, "confidence", "") not in ("stale", "lead_only", "rejected_no_date", "unverified_date", "lead_pending_verification")]
             sigs = materialize_fare_signals(
                 session, source, _filtered, candidate_url=cand.url if cand else None
             )
@@ -840,9 +840,9 @@ async def fetch_source(
     # P0：清除超过 30 天的旧情报
     if effective_module == "fare" and not dry_run:
         try:
-            from app.services.fare.freshness import cleanup_stale_signals
+            from app.services.fare.freshness import archive_stale_signals
 
-            _clean = cleanup_stale_signals(session, max_age_days=30)
+            _clean = archive_stale_signals(session, max_age_days=30)
         except Exception:
             pass
     # R-015：parsed>0 且无新增 → ok_existing，不是 ok_zero
@@ -860,6 +860,8 @@ async def fetch_source(
             source.last_result = "ok_zero"
     else:
         source.last_result = "failed"
+        source.last_attempt_at = now
+        source.consecutive_failures = (getattr(source, "consecutive_failures", 0) or 0) + 1
     session.flush()
 
     preview = [
@@ -921,17 +923,34 @@ async def run_discovery(
     if country_code:
         cc = country_code.upper()
         stmt = stmt.where((Source.country_code == cc) | (Source.country_code.is_(None)))
-    stmt = stmt.order_by(Source.last_fetch_at.is_(None).desc(), Source.last_fetch_at, Source.name)
+    # CR-01 公平调度：按 next_due_at 排序，失败来源退避
+    from datetime import timedelta as _td
+
+    stmt = stmt.order_by(
+        Source.last_attempt_at.is_(None).desc(),  # 从未尝试的优先
+        Source.last_attempt_at.asc(),  # 最久未尝试的优先
+        Source.name,
+    )
     all_sources = list(session.scalars(stmt).all())
     sources: list[Source] = []
     for s in all_sources:
-        if enforce_cooldown and not dry_run and s.last_fetch_at is not None:
-            interval_h = max(1, s.fetch_interval_hours or 24)
-            last = ensure_aware_utc(s.last_fetch_at)
-            if last and (now - last) < _td(hours=interval_h):
-                s.last_result = "skipped_cooldown"
-                s.last_attempt_at = now
-                continue
+        if enforce_cooldown and not dry_run:
+            # 冷却：成功来源用 fetch_interval，失败来源用退避
+            last_attempt = ensure_aware_utc(s.last_attempt_at) if s.last_attempt_at else None
+            if last_attempt is None:
+                pass  # 从未尝试，放行
+            else:
+                interval_h = max(1, s.fetch_interval_hours or 24)
+                # 失败退避：连续失败越多，等待越久（指数退避，上限 24h）
+                fail_count = getattr(s, "consecutive_failures", 0) or 0
+                if fail_count > 0 and (s.last_result or "") == "failed":
+                    backoff_h = min(24, interval_h * (2 ** min(fail_count, 4)))
+                else:
+                    backoff_h = interval_h
+                if (now - last_attempt) < _td(hours=backoff_h):
+                    s.last_result = "skipped_cooldown"
+                    s.last_attempt_at = now  # 更新避免重复计数
+                    continue
         sources.append(s)
         if len(sources) >= limit:
             break

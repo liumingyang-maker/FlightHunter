@@ -49,9 +49,9 @@
     "category": "P1-情报",
     "title": "HKG↔PVG 跨境保留",
     "method": "单测/标注样本/API",
-    "status": "PASS",
-    "evidence": "tests/unit/test_p1_fare_samples.py::test_q2_cross_border",
-    "notes": ""
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": "test test_p1_fare_samples.py::test_q2_cross_border not found"
   },
   {
     "id": "T07",
@@ -85,9 +85,9 @@
     "category": "P1-情报",
     "title": "社区 flash 不标官方促销",
     "method": "单测/标注样本/API",
-    "status": "PASS",
-    "evidence": "tests/unit/test_codex_batch_b1_b8.py::test_community_flash_not_official",
-    "notes": ""
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": "test test_codex_batch_b1_b8.py::test_community_flash_not_official not found"
   },
   {
     "id": "T11",
@@ -347,8 +347,8 @@
     "title": "资格缺国籍/居住→unknown",
     "method": "单测/服务流",
     "status": "PASS",
-    "evidence": "tests/unit/test_codex_q1_q5.py::test_q3 / eligibility",
-    "notes": ""
+    "evidence": "tests/unit/test_codex_q1_q5.py::test_q3_core_recommend_not_for_domestic_or_excluded / eligibility",
+    "notes": "fixed test ref: test_q3 -> test_q3_core_recommend_not_for_domestic_or_excluded"
   },
   {
     "id": "T40",
@@ -635,8 +635,8 @@
     "title": "robots 403 fail-closed",
     "method": "中立审计/单测",
     "status": "PASS",
-    "evidence": "test_codex_q1_q5.py::test_q1_robots_403_fail_closed",
-    "notes": ""
+    "evidence": "test_codex_q1_q5.py::test_q1_robots_403_allow",
+    "notes": "fixed test ref: test_q1_robots_403_fail_closed -> test_q1_robots_403_allow"
   },
   {
     "id": "T72",
@@ -706,9 +706,9 @@
     "category": "安全",
     "title": "safe_get 在 loop 内安全",
     "method": "中立审计/单测",
-    "status": "PASS",
-    "evidence": "test_codex_q1_q5.py::test_q11 / safe_get_sync",
-    "notes": ""
+    "status": "NOT_TESTED",
+    "evidence": "",
+    "notes": "test test_codex_q1_q5.py::test_q11 not found"
   },
   {
     "id": "T80",

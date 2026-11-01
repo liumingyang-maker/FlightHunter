@@ -57,11 +57,15 @@ class HttpxFetchAdapter(SourceAdapter):
                         rp.parse(raw.decode("utf-8", errors="replace").splitlines())
                         self._robots_cache[origin] = rp
                     else:
-                        # 403/404/其它 → 无 robots 规则，允许抓
-                        self._robots_cache[origin] = "ALLOW_NO_ROBOTS"
+                        if resp.status_code in (403, 401, 405):
+                            self._robots_cache[origin] = "ALLOW_NO_ROBOTS"
+                        elif resp.status_code == 200:
+                            self._robots_cache[origin] = "ALLOW_NO_ROBOTS"
+                        else:
+                            self._robots_cache[origin] = None
             except Exception:
-                # 网络超时/异常 → 允许抓（不因 robots 故障阻断）
-                self._robots_cache[origin] = "ALLOW_NO_ROBOTS"
+                # 网络异常 → 保守拒绝
+                self._robots_cache[origin] = None
         entry = self._robots_cache.get(origin)
         if entry == "ALLOW_NO_ROBOTS":
             return True
@@ -307,6 +311,25 @@ class HttpxFetchAdapter(SourceAdapter):
 
 
 _IATA_RE = re.compile(r"\b([A-Z]{3})\b")
+# PRICE-01: 结构化金额用途分类
+_AMOUNT_PURPOSE_PATTERNS = [
+    (re.compile(r"优惠券|抵用券|代金券|coupon|voucher|redeem|redeemable", re.I), "coupon_face_value"),
+    (re.compile(r"返现|cashback|cash\s*back|rebate|refund", re.I), "cashback"),
+    (re.compile(r"折扣|discount|off\s|省下|save\s|立省|立减|立减", re.I), "discount_amount"),
+    # 修正：KG 需前后有边界，不能匹配 CKG/HKG 机场代码
+    (re.compile(r"(?:行李|baggage|luggage|checked\s?bag|托运行李|\d+\s?KG\b|\d+\s?kg\b)", re.I), "baggage_weight"),
+    (re.compile(r"机票|flight|airfare|fare|ticket|機票|來回|往返|含税|連稅", re.I), "fare_price"),
+]
+
+
+def classify_amount_purpose(label: str) -> str:
+    """识别金额用途：fare_price / coupon_face_value / cashback / discount_amount / baggage_weight / unknown。"""
+    for pat, purpose in _AMOUNT_PURPOSE_PATTERNS:
+        if pat.search(label):
+            return purpose
+    return "unknown"
+
+
 _PRICE_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(?:元|¥)")
 _FARE_KW = (
     "机票",
@@ -683,7 +706,14 @@ def parse_deal_label(label: str, *, page_url: str) -> ParsedSignal | None:
         return None
     if price is None and origin is None and not has_deal_kw and not has_reported_amount:
         return None
-    # D-005/N-005：减免/优惠额/立省 ≠ 票价（简繁中英）
+        # PRICE-01: 结构化金额用途分类（coupon/cashback/discount 不写票价）
+    amount_purpose = classify_amount_purpose(label)
+    if amount_purpose in ("coupon_face_value", "cashback", "discount_amount"):
+        if price is not None:
+            price = None
+            currency = None
+
+# D-005/N-005：减免/优惠额/立省 ≠ 票价（简繁中英）
     if re.search(
         r"(最高减|最高減|最多减|最多減|立减|立減|立省|省下|可省|最多可省|节省|節省|優惠額|优惠额|折扣额|折上折|"
         r"up\s*to\s*HK\$|save\s*HK\$|save\s*¥|off\s*HK\$|減\s*HK\$|减\s*HK\$|省\s*HK\$|省\s*¥|立省)",

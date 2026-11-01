@@ -29,8 +29,7 @@ _DATE_PATTERNS = [
     r'(?:發佈日期|发布日期|發佈|发布|更新于)\s*[:：·]?\s*(20\d{2}[-/年]\d{1,2}[-/月]\d{1,2})',
     # 英文
     r'(?:published|posted)\s*[:\s]*(20\d{2}-\d{2}-\d{2})',
-    # 宽松日期（放在最后）
-    r'(20\d{2}-\d{2}-\d{2})T\d{2}:\d{2}',
+    # 只接受有发布标签的日期；不接受裸 ISO 时间戳（FRESH-01）
 ]
 
 # 列表页 URL 特征（只当线索，不当情报）
@@ -131,8 +130,13 @@ async def verify_published_date(
         return None
 
 
-def cleanup_stale_signals(session, *, max_age_days: int = 30) -> dict:
-    """清除超过 N 天的旧情报（published_at 或 created_at）。"""
+def archive_stale_signals(session, *, max_age_days: int = 30) -> dict:
+    """FRESH-03: 归档超过 N 天的旧情报（不删除，保留收藏/证据/通知）。
+
+    - signal_status='archived' 标记归档
+    - 不删除记录，不破坏收藏/通知引用
+    - 推荐视图默认隐藏 archived
+    """
     from datetime import datetime, timedelta, timezone
 
     from sqlalchemy import or_, select
@@ -148,11 +152,19 @@ def cleanup_stale_signals(session, *, max_age_days: int = 30) -> dict:
                 (FareDealSignal.published_at_utc.is_(None))
                 & (FareDealSignal.created_at_utc < cutoff),
             )
-        )
+        ).where(FareDealSignal.signal_status != "archived")
     ).all()
-    deleted = 0
+    archived = 0
+    bookmarked = 0
     for r in rows:
-        session.delete(r)
-        deleted += 1
+        if (r.signal_status or "") == "bookmarked":
+            bookmarked += 1
+            continue  # 收藏的不归档
+        r.signal_status = "archived"
+        archived += 1
     session.flush()
-    return {"deleted": deleted, "cutoff": cutoff.isoformat()}
+    return {
+        "archived": archived,
+        "bookmarked_skipped": bookmarked,
+        "cutoff": cutoff.isoformat(),
+    }
