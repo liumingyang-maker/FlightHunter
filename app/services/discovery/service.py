@@ -178,7 +178,7 @@ def ingest_fetch_result(
 ) -> RawCandidate | None:
     now = utc_now()
     if not result.ok:
-        source.consecutive_failures = (source.consecutive_failures or 0) + 1
+
         if result.error_code == ErrorCode.SOURCE_FETCH_DENIED.value:
             source.status = "manual_only"
         session.flush()
@@ -288,7 +288,10 @@ def materialize_fare_signals(
         from app.services.discovery.cache import get_article_cache, save_article_cache
 
         cached = get_article_cache(session, sig_url, guid=getattr(s, "guid", None), source_id=source.id)
-        content_hash = hash(s.raw_claim_text or s.title or "")
+        # R2: 稳定内容摘要（跨进程一致）
+        import hashlib
+
+        content_hash = hashlib.sha256((s.raw_claim_text or s.title or "").encode()).hexdigest()
         if cached and cached.content_hash == str(content_hash):
             # 内容未变化，跳过重复解析
             continue
@@ -302,10 +305,15 @@ def materialize_fare_signals(
         )
         if existing_sig:
             # PC-04: 旧文改价/改摘要 → 更新事实字段
-            if s.reported_total is not None:
+            # R3: 区分撤回/未提取/纠错
+            text_lower = (s.raw_claim_text or "").lower()
+            if any(k in text_lower for k in ["撤回", "withdrawn", "expired", "sold out", "不可用", "no longer"]):
+                existing_sig.reported_total = None
+                existing_sig.currency = None
+            elif s.reported_total is not None:
                 existing_sig.reported_total = s.reported_total
-            if s.currency:
-                existing_sig.currency = s.currency
+                if s.currency:
+                    existing_sig.currency = s.currency
             if s.raw_claim_text:
                 existing_sig.raw_claim_text = s.raw_claim_text[:2000]
             # 更新缓存
@@ -318,6 +326,15 @@ def materialize_fare_signals(
                 title=s.title[:200],
             )
             continue
+        # R2: 首次新增也写缓存
+        save_article_cache(
+            session,
+            sig_url,
+            guid=getattr(s, "guid", None),
+            source_id=source.id,
+            content_hash=str(content_hash),
+            title=s.title[:200],
+        )
         sig = FareDealSignal(
             id=new_id(),
             deal_id=deal.id,
@@ -802,6 +819,25 @@ async def fetch_source(
     result = await adapter.fetch(source.base_url, headers=cond_headers if cond_headers else None)
     now = utc_now()
     source.last_attempt_at = now
+    # R1: 处理 ETag/304 响应
+    # R1: 304 → 复用缓存内容，不当空内容
+    if result.status_code == 304:
+        from app.services.discovery.cache import get_article_cache
+
+        cached = get_article_cache(session, source.base_url, source_id=source.id)
+        if cached and cached.content_hash:
+            result.ok = True
+            result.content_hash = cached.content_hash
+        source.last_result = "not_modified"
+        return {"source_id": source.id, "status": "not_modified", "reason": "304"}
+
+    if result.ok:
+        handle_response(
+            source,
+            {"etag": result.etag, "last-modified": result.last_modified},
+            (result.text or "").encode(),
+            status_code=result.status_code or 200,
+        )
     if not result.ok:
         source.last_result = "failed"
     cand = ingest_fetch_result(session, source, result, module=module)

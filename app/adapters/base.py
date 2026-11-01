@@ -20,6 +20,9 @@ class FetchResult:
     fetched_at: datetime | None = None
     final_url: str | None = None
     robots_disallowed: bool = False
+    # R1: 响应元数据（ETag/Last-Modified）
+    etag: str | None = None
+    last_modified: str | None = None
 
 
 @dataclass

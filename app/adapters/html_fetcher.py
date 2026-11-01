@@ -118,7 +118,9 @@ class HttpxFetchAdapter(SourceAdapter):
                             message=f"跳转目标不安全（请求前拦截）: {exc}",
                             final_url=current,
                             fetched_at=datetime.now(UTC),
-                        )
+                        etag=resp.headers.get("etag"),
+                        last_modified=resp.headers.get("last-modified"),
+                    )
                     if not await self._robots_allowed(client, current):
                         return FetchResult(
                             ok=False,
