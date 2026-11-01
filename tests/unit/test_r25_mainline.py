@@ -57,7 +57,7 @@ def test_raffle_module_creates_candidate_round(db, settings: Settings, monkeypat
                 )
             ]
 
-    monkeypatch.setattr("app.services.discovery.service.adapter_for", lambda s, st: Fake())
+    monkeypatch.setattr("app.services.discovery.fetcher_router.FetcherRouter.select_adapter", lambda self, source: Fake())  # was: lambda s, st: Fake())
     # only this source
     for s in db.scalars(select(Source)).all():
         if s.id != src.id:

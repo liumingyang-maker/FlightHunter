@@ -34,9 +34,11 @@ class FetcherRouter:
             self._adapters[mode] = HttpxFetchAdapter(self.settings)
         return self._adapters[mode]
 
-    def select_adapter(self, source) -> SourceAdapterProtocol:
-        """按来源选择适配器。"""
+    def select_adapter(self, source) -> SourceAdapterProtocol | None:
+        """按来源选择适配器。none 模式返回 None（禁止自动抓取）。"""
         mode = getattr(source, "allowed_fetch_mode", "httpx") or "httpx"
+        if mode == "none":
+            return None
         if mode == "rss":
             return self._get_adapter("rss")
         return self._get_adapter("httpx")

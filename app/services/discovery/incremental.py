@@ -66,13 +66,15 @@ def normalize_url(url: str) -> str:
 
 
 def make_article_key(url: str, guid: str | None = None, platform_id: str | None = None) -> str:
-    """稳定文章键：优先 GUID > 平台 ID > URL 哈希。"""
+    """稳定文章键：GUID 考虑来源作用域避免冲突。"""
     import hashlib
 
+    if guid and platform_id:
+        return hashlib.sha256(f"guid:{platform_id}:{guid}".encode()).hexdigest()[:32]
     if guid:
         return hashlib.sha256(f"guid:{guid}".encode()).hexdigest()[:32]
     if platform_id:
-        return hashlib.sha256(f"pid:{platform_id}".encode()).hexdigest()[:32]
+        return hashlib.sha256(f"pid:{platform_id}:{normalize_url(url)}".encode()).hexdigest()[:32]
     return hashlib.sha256(f"url:{normalize_url(url)}".encode()).hexdigest()[:32]
 
 

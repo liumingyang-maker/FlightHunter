@@ -75,7 +75,7 @@ def test_discovery_e2e_persists_signals_and_alerts(db, settings: Settings, monke
     def _fake_adapter(source, settings):
         return FakeHtmlAdapter()
 
-    monkeypatch.setattr("app.services.discovery.service.adapter_for", _fake_adapter)
+    monkeypatch.setattr("app.services.discovery.fetcher_router.FetcherRouter.select_adapter", lambda self, source: FakeHtmlAdapter())
 
     results = asyncio.run(
         run_discovery(

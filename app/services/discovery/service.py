@@ -751,7 +751,11 @@ async def fetch_source(
             "message": "未访问外部网络",
         }
 
-    adapter = adapter_for(source, settings)
+    # P2-5: FetcherRouter 统一路由
+    from app.services.discovery.fetcher_router import FetcherRouter
+
+    router = FetcherRouter(settings)
+    adapter = router.select_adapter(source)
     if adapter is None:
         return {
             "source_id": source.id,
